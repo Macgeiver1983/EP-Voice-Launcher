@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.ScrollView;
 
 public class MainActivity extends Activity {
     private TextView status, recognized, recognitionState, engineState, eventCount, errorState;
@@ -33,7 +34,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
-        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.1 Diagnose"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
+        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.2 Prüfung"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
         TextView info = new TextView(this); info.setText("Aktivierungswort: Hey Jarvis (lokales ONNX-Modell)\n\nZum Starten muss diese App sichtbar sein. Danach läuft der Mikrofon-Dienst im Hintergrund. Sperrbildschirm-Erkennung ist geräteabhängig."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
@@ -44,17 +45,21 @@ public class MainActivity extends Activity {
         Button start = new Button(this); start.setText("Spracherkennung STARTEN"); root.addView(start);
         Button stop = new Button(this); stop.setText("Spracherkennung STOPPEN"); root.addView(stop);
         Button open = new Button(this); open.setText("ChatGPT testweise öffnen"); root.addView(open);
-        start.setOnClickListener(v -> { if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) requestPermissions(permissions, 7); else startListening(); });
+        start.setOnClickListener(v -> { if (!hasRequiredPermissions()) requestPermissions(permissions, 7); else startListening(); });
         stop.setOnClickListener(v -> { stopService(new Intent(this, WakeService.class)); status.setText("Dienst gestoppt"); });
         open.setOnClickListener(v -> WakeService.openChatGPT(this));
-        setContentView(root); status.setText("Bereit");
+        ScrollView scroll = new ScrollView(this); scroll.addView(root); setContentView(scroll); status.setText("Bereit");
     }
     @Override protected void onResume() {super.onResume();uiHandler.post(refresh);}
     @Override protected void onPause() {uiHandler.removeCallbacks(refresh);super.onPause();}
+    private boolean hasRequiredPermissions() {
+        return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            && (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
+    }
     private void startListening() { startForegroundService(new Intent(this, WakeService.class)); status.setText("Dienst gestartet – siehe Benachrichtigung"); }
     @Override public void onRequestPermissionsResult(int code, String[] p, int[] grants) {
         super.onRequestPermissionsResult(code,p,grants);
-        if(code==7 && checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) startListening();
-        else status.setText("Mikrofonberechtigung erforderlich");
+        if(code==7 && hasRequiredPermissions()) startListening();
+        else status.setText("Mikrofon und Benachrichtigungen erforderlich. Bitte in den App-Einstellungen erlauben.");
     }
 }

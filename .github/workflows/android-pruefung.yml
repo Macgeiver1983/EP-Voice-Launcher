@@ -30,6 +30,8 @@ jobs:
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug :app:lintDebug 2>&1 | tee ci-build.log
+      - name: Tatsächlich in der APK enthaltene Modelle prüfen
+        run: python3 scripts/download_and_verify_models.py --apk app/build/outputs/apk/debug/app-debug.apk
       - name: APK und Buildprotokoll bereitstellen
         if: always()
         uses: actions/upload-artifact@v4
@@ -39,6 +41,7 @@ jobs:
             app/build/outputs/apk/debug/*.apk
             app/build/reports/lint-results-debug.*
             ci-build.log
+            ci-apk-model-report.txt
           if-no-files-found: warn
   modelle:
     runs-on: ubuntu-24.04
@@ -51,7 +54,7 @@ jobs:
       - name: Modelle herunterladen und ONNX-Struktur prüfen
         run: |
           set -o pipefail
-          python -m pip install --disable-pip-version-check onnx==1.17.0
+          python -m pip install --disable-pip-version-check onnx==1.17.0 onnxruntime==1.20.1 numpy==1.26.4
           python scripts/download_and_verify_models.py 2>&1 | tee ci-model-download.log
       - name: Modellprotokolle bereitstellen
         if: always()
