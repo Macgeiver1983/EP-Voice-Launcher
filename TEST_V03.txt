@@ -1,0 +1,1 @@
+V0.3 DIAGNOSE: Zeigt erkannten Text und Status in der geoeffneten App an. Aktivierungswoerter: Hey ChatGPT, Los ChatGPT, Hey Jarvis (auch Hey Javis). Keine echte stromsparende Wake-Word-Engine. Android SpeechRecognizer wird weiterhin neu gestartet. Nicht als 24h-Dauerloesung verwenden. APK muss auf dem Handy gebaut werden.

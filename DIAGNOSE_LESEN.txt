@@ -1,0 +1,5 @@
+V0.4.1: Instrumentierung der vorhandenen Engine. Keine Behauptung, dass das SpeechKit-Modell enthalten ist.
+Engine zeigt Initialisierung/Start; Ereignisse zählen ausschließlich Bibliotheks-Callbacks, nicht alle Audiobloecke.
+Fehler bleibt nach stopSelf erhalten.
+Wenn Engine gestartet aber Ereignisse 0: daraus allein ist nicht ersichtlich, ob Audioframes ankommen.
+Build und Android-Laufzeit sind NICHT getestet.

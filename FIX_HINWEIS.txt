@@ -1,0 +1,4 @@
+V0.4 Fix 1: gradle.properties im Projekt-Hauptordner ergänzt.
+Behebt den gemeldeten Gradle-Fehler bei :app:checkDebugAarMetadata (AndroidX nicht aktiviert).
+Der Build wurde hier nicht ausgeführt. Weitere Buildfehler sind möglich.
+Projektordner entpacken und in Code on the Go öffnen.
