@@ -19,7 +19,7 @@ class WakeService : Service() {
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") { stopSelf(); return START_NOT_STICKY }
-        if (detector != null) return START_STICKY
+        if (detector != null) return START_NOT_STICKY
         failed = false
         debug("engine", "Initialisierung läuft")
         debug("events", "0")
@@ -33,6 +33,16 @@ class WakeService : Service() {
             debug("engine", "Modell wird geladen")
             detector = OpenWakeWord.Builder(this).setModel(OpenWakeWord.BuiltInModel.HEY_JARVIS)
                 .setThreshold(0.5f).setDebounceMs(3000L).build()
+            detector?.onError = { error ->
+                failed = true
+                debug("engine", "FEHLER im Audio-/Modell-Thread")
+                debug("error", "${error.javaClass.simpleName}: ${error.message}; ${error.cause?.message ?: ""}")
+                status("Erkennung fehlgeschlagen – siehe Fehleranzeige")
+                stopSelf()
+            }
+            detector?.onAudioProgress = { frames, peak ->
+                debug("engine", "Audio aktiv: $frames Blöcke; Pegel %.3f".format(peak))
+            }
             debug("engine", "Modellobjekt erstellt; Audio-Start läuft")
             detector?.start { score ->
                 val prefs = getSharedPreferences("ep_debug", MODE_PRIVATE)
@@ -57,7 +67,7 @@ class WakeService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
     private fun showLaunchNotification() {
         val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
