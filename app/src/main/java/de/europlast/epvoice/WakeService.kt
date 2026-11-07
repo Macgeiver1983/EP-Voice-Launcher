@@ -26,6 +26,10 @@ class WakeService : Service() {
         debug("events_jarvis", "0")
         debug("events_ep", "0")
         debug("error", "Keine")
+        debug("phrase", "(noch nichts erkannt)")
+        debug("score_jarvis", "–")
+        debug("score_ep", "–")
+        debug("model_error", "")
         val stop = PendingIntent.getService(this,1,Intent(this,WakeService::class.java).setAction("STOP"),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("EP Voice – Offline-Wakewords").setContentText("Lokale Erkennung aktiv")
@@ -43,6 +47,19 @@ class WakeService : Service() {
                 status("Erkennung fehlgeschlagen – siehe Fehleranzeige")
                 stopSelf()
             }
+            detector?.onOptionalModelError = { label, detail ->
+                debug("model_error", "$label nicht verfügbar: $detail")
+            }
+            detector?.onModelProgress = { scores ->
+                fun formatScore(label: String): String = when {
+                    label !in scores -> "inaktiv"
+                    else -> scores[label]?.let { "%.3f".format(it) } ?: "–"
+                }
+                getSharedPreferences("ep_debug", MODE_PRIVATE).edit()
+                    .putString("score_jarvis", formatScore("Hey Jarvis"))
+                    .putString("score_ep", formatScore("Hey EP"))
+                    .apply()
+            }
             detector?.onAudioProgress = { frames, peak ->
                 debug("engine", "Audio aktiv: $frames Blöcke; Pegel %.3f".format(peak))
             }
@@ -56,11 +73,10 @@ class WakeService : Service() {
                     .putString(modelCounter, modelCount.toString())
                     .putString("last_score", score.toString())
                     .putString("last_model", wakeWord).apply()
+                debug("phrase", "$wakeWord (Score: $score)")
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
-                    getSharedPreferences("ep_debug",MODE_PRIVATE).edit()
-                        .putString("phrase","$wakeWord (Score: $score)").apply()
                     status("$wakeWord erkannt – Benachrichtigung öffnen")
                     showLaunchNotification(wakeWord)
                 }

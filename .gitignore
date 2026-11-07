@@ -11,3 +11,9 @@ build/
 app/build/
 __pycache__/
 *.pyc
+
+training/hey_ep/manifest.csv
+training/hey_ep/audio_qualitaet.csv
+ci-models/
+ci-*.txt
+ci-*.log

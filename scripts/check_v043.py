@@ -18,15 +18,16 @@ for name,digest in EXPECTED.items():
     assert hashlib.sha256(data).hexdigest()==digest, f'V0.4.2 original asset changed: {name}'
 print('PASS – all 3 V0.4.2 ONNX assets have original SHA256')
 skip_audio='--skip-audio' in sys.argv
-manifest=ROOT/'training/hey_ep/manifest.csv'
-with manifest.open('r',encoding='utf-8-sig',newline='') as f:rows=list(csv.DictReader(f))
-assert len(rows)==10
-assert {r['klasse'] for r in rows}=={'positive'}
-for row in rows if not skip_audio else []:
-    file=ROOT/'training/hey_ep/wav_16khz'/row['wav']
-    with wave.open(str(file)) as w:
-        assert (w.getframerate(),w.getnchannels(),w.getsampwidth())==(16000,1,2), str(file)
-        assert w.getnframes()>16000
+if not skip_audio:
+    manifest=ROOT/'training/hey_ep/manifest.csv'
+    with manifest.open('r',encoding='utf-8-sig',newline='') as f:rows=list(csv.DictReader(f))
+    assert len(rows)==10
+    assert {r['klasse'] for r in rows}=={'positive'}
+    for row in rows:
+        file=ROOT/'training/hey_ep/wav_16khz'/row['wav']
+        with wave.open(str(file)) as w:
+            assert (w.getframerate(),w.getnchannels(),w.getsampwidth())==(16000,1,2), str(file)
+            assert w.getnframes()>16000
 print('PASS – ten original 16kHz mono WAV training recordings' if not skip_audio else 'SKIPPED – private WAV files intentionally excluded from public GitHub')
 core=(ROOT/'app/src/main/java/com/openwakeword/OpenWakeWord.kt').read_text()
 service=(ROOT/'app/src/main/java/de/europlast/epvoice/WakeService.kt').read_text()

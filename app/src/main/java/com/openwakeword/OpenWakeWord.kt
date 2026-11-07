@@ -37,7 +37,6 @@ import java.nio.FloatBuffer
 class OpenWakeWord private constructor(
     private val context: Context,
     private val wakeWordModels: List<WakeWordConfig>,
-    private val threshold: Float,
     private val debounceMs: Long,
 ) {
 
@@ -128,7 +127,6 @@ class OpenWakeWord private constructor(
         fun build(): OpenWakeWord = OpenWakeWord(
             context.applicationContext,
             models.toList(),
-            threshold,
             debounceMs,
         )
     }
@@ -178,6 +176,7 @@ class OpenWakeWord private constructor(
         val consecutiveFramesRequired: Int = 1,
         var consecutiveFramesSeen: Int = 0,
         var lastDetectionTime: Long = 0L,
+        var lastScore: Float? = null,
     )
     private val classifiers = mutableListOf<Classifier>()
     @Volatile var activeModels: List<String> = emptyList()
@@ -188,6 +187,8 @@ class OpenWakeWord private constructor(
     @Volatile private var isRunning = false
 
     // EP fix: report actual audio progress and asynchronous worker failures.
+    var onModelProgress: ((Map<String, Float?>) -> Unit)? = null
+    var onOptionalModelError: ((String, String) -> Unit)? = null
     var onAudioProgress: ((Long, Float) -> Unit)? = null
     var onError: ((Exception) -> Unit)? = null
     private var listener: OnDetectionListener? = null
@@ -273,6 +274,8 @@ class OpenWakeWord private constructor(
         ortEnv = null
         listener = null
         namedListener = null
+        onModelProgress = null
+        onOptionalModelError = null
         onAudioProgress = null
         onError = null
     }
@@ -328,12 +331,18 @@ class OpenWakeWord private constructor(
                 }
             } catch (error: Exception) {
                 if (!config.optional) throw error
-                Log.e(TAG, "Optional wake-word model ${config.label} not loaded; keeping primary model", error)
+                reportOptionalModelError(config.label, error)
             }
         }
         require(classifiers.isNotEmpty()) { "No wake-word models available" }
         activeModels = classifiers.map { it.label }
 
+    }
+
+    private fun reportOptionalModelError(label: String, error: Exception) {
+        Log.e(TAG, "Optional wake-word model unavailable: $label", error)
+        val detail = error.message ?: error.javaClass.simpleName
+        mainHandler.post { if (isRunning) onOptionalModelError?.invoke(label, detail) }
     }
 
     private fun loadAsset(name: String): ByteArray =
@@ -418,7 +427,13 @@ class OpenWakeWord private constructor(
                 var peak = 0
                 for (s in frame) peak = maxOf(peak, kotlin.math.abs(s.toInt()))
                 val level = peak / 32768f
-                mainHandler.post { if (isRunning) onAudioProgress?.invoke(count, level) }
+                val scores = classifiers.associate { it.label to it.lastScore }
+                mainHandler.post {
+                    if (isRunning) {
+                        onAudioProgress?.invoke(count, level)
+                        onModelProgress?.invoke(scores)
+                    }
+                }
             }
             addToRawBuffer(frame)
             if (rawTotalWritten < FRAME_SAMPLES + MEL_CONTEXT_SAMPLES) continue
@@ -457,12 +472,13 @@ class OpenWakeWord private constructor(
                         if (!classifier.optional) throw error
                         // A failing experimental EP classifier must never stop the
                         // working Jarvis detector or interrupt microphone capture.
-                        Log.e(TAG, "Disabling failed optional model: ${classifier.label}", error)
+                        reportOptionalModelError(classifier.label, error)
                         try { classifier.session.close() } catch (_: Exception) {}
                         classifierIterator.remove()
                         activeModels = classifiers.map { it.label }
                         continue
                     }
+                    classifier.lastScore = score
                     // Keep historical Jarvis semantics: its required confirmation count is 1.
                     // The experimental EP classifier requires several consecutive positive
                     // 80-ms windows to reduce isolated high-scoring false positives.

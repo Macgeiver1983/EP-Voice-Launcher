@@ -7,7 +7,6 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.graphics.Color;
-import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -22,10 +21,13 @@ public class MainActivity extends Activity {
             recognized.setText("Letzte Erkennung: " + prefs.getString("phrase", "(noch nichts erkannt)"));
             recognitionState.setText("Status: " + prefs.getString("state", "Bereit"));
             engineState.setText("Engine: " + prefs.getString("engine", "Nicht gestartet"));
-            eventCount.setText("Erkennungen: Jarvis " + prefs.getString("events_jarvis", "0")
-                    + " | EP " + prefs.getString("events_ep", "0")
-                    + " | letzter Score: " + prefs.getString("last_score", "–"));
-            errorState.setText("Fehler: " + prefs.getString("error", "Keine"));
+            eventCount.setText("Hey Jarvis: " + prefs.getString("events_jarvis", "0")
+                    + " Treffer | Score " + prefs.getString("score_jarvis", "–")
+                    + "\nHey EP: " + prefs.getString("events_ep", "0")
+                    + " Treffer | Score " + prefs.getString("score_ep", "–"));
+            String modelError = prefs.getString("model_error", "");
+            errorState.setText("Fehler: " + prefs.getString("error", "Keine")
+                    + (modelError.isEmpty() ? "" : "\n" + modelError));
             uiHandler.postDelayed(this, 700);
         }
     };

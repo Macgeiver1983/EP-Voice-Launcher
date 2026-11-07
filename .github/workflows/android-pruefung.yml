@@ -62,7 +62,7 @@ jobs:
       - name: Modelle herunterladen und ONNX-Struktur prüfen
         run: |
           set -o pipefail
-          python -m pip install --disable-pip-version-check onnx==1.17.0 onnxruntime==1.20.1 numpy==1.26.4
+          python -m pip install --disable-pip-version-check onnx==1.17.0 onnxruntime==1.17.3 numpy==1.26.4
           python scripts/download_and_verify_models.py 2>&1 | tee ci-model-download.log
           python scripts/check_v043.py --skip-audio --require-model
       - name: Modellprotokolle bereitstellen
