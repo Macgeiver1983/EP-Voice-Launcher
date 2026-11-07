@@ -31,6 +31,12 @@ def main():
                     lines.append(verify(data, name))
                     if data != (ASSETS / name).read_bytes():
                         raise RuntimeError(f'{name}: APK differs from project assets')
+                ep = 'hey_ep.onnx'
+                deployed = apk.read('assets/openwakeword/' + ep)
+                expected_ep = (ASSETS / ep).read_bytes()
+                if deployed != expected_ep:
+                    raise RuntimeError('APK Hey EP model differs from source asset')
+                lines.append(f'{ep}: APK asset OK; bytes={len(deployed)}; sha256={hashlib.sha256(deployed).hexdigest()}')
         else:
             import onnx
             import onnxruntime as ort

@@ -23,15 +23,18 @@ class WakeService : Service() {
         failed = false
         debug("engine", "Initialisierung läuft")
         debug("events", "0")
+        debug("events_jarvis", "0")
+        debug("events_ep", "0")
         debug("error", "Keine")
         val stop = PendingIntent.getService(this,1,Intent(this,WakeService::class.java).setAction("STOP"),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("EP Voice – Hey Jarvis").setContentText("Lokale Erkennung aktiv")
+            .setContentTitle("EP Voice – Offline-Wakewords").setContentText("Lokale Erkennung aktiv")
             .setOngoing(true).addAction(Notification.Action.Builder(null,"Stoppen",stop).build()).build()
         startForeground(1001,n)
         try {
             debug("engine", "Modell wird geladen")
             detector = OpenWakeWord.Builder(this).setModel(OpenWakeWord.BuiltInModel.HEY_JARVIS)
+                .addModelAsset("openwakeword/hey_ep.onnx", "Hey EP", modelThreshold = 0.95f, optional = true, consecutiveFrames = 4)
                 .setThreshold(0.5f).setDebounceMs(3000L).build()
             detector?.onError = { error ->
                 failed = true
@@ -44,17 +47,22 @@ class WakeService : Service() {
                 debug("engine", "Audio aktiv: $frames Blöcke; Pegel %.3f".format(peak))
             }
             debug("engine", "Modellobjekt erstellt; Audio-Start läuft")
-            detector?.start { score ->
+            detector?.startNamed { wakeWord, score ->
                 val prefs = getSharedPreferences("ep_debug", MODE_PRIVATE)
                 val count = (prefs.getString("events", "0")?.toIntOrNull() ?: 0) + 1
-                prefs.edit().putString("events", count.toString()).putString("last_score", score.toString()).apply()
+                val modelCounter = if (wakeWord == "Hey EP") "events_ep" else "events_jarvis"
+                val modelCount = (prefs.getString(modelCounter, "0")?.toIntOrNull() ?: 0) + 1
+                prefs.edit().putString("events", count.toString())
+                    .putString(modelCounter, modelCount.toString())
+                    .putString("last_score", score.toString())
+                    .putString("last_model", wakeWord).apply()
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
                     getSharedPreferences("ep_debug",MODE_PRIVATE).edit()
-                        .putString("phrase","Hey Jarvis (Score: $score)").apply()
-                    status("Hey Jarvis erkannt – Benachrichtigung öffnen")
-                    showLaunchNotification()
+                        .putString("phrase","$wakeWord (Score: $score)").apply()
+                    status("$wakeWord erkannt – Benachrichtigung öffnen")
+                    showLaunchNotification(wakeWord)
                 }
             }
             debug("engine", "start() zurückgekehrt; Audiofluss nicht unabhängig bestätigt")
@@ -69,13 +77,13 @@ class WakeService : Service() {
         }
         return START_NOT_STICKY
     }
-    private fun showLaunchNotification() {
+    private fun showLaunchNotification(wakeWord: String) {
         val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
         if (launch == null) { status("ChatGPT nicht installiert oder nicht sichtbar"); return }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val pending = PendingIntent.getActivity(this,2,launch,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Hey Jarvis erkannt").setContentText("Tippen, um ChatGPT zu öffnen")
+            .setContentTitle("$wakeWord erkannt").setContentText("Tippen, um ChatGPT zu öffnen")
             .setContentIntent(pending).setAutoCancel(true).build()
         getSystemService(NotificationManager::class.java).notify(1002,notification)
     }

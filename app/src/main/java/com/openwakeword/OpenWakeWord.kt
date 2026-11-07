@@ -36,10 +36,18 @@ import java.nio.FloatBuffer
  */
 class OpenWakeWord private constructor(
     private val context: Context,
-    private val wakeWordModelSource: ModelSource,
+    private val wakeWordModels: List<WakeWordConfig>,
     private val threshold: Float,
     private val debounceMs: Long,
 ) {
+
+    private data class WakeWordConfig(
+        val source: ModelSource,
+        val label: String,
+        val threshold: Float,
+        val optional: Boolean,
+        val consecutiveFrames: Int = 1,
+    )
 
     /** Pre-trained wake word models bundled with the library. */
     enum class BuiltInModel(internal val assetPath: String, val displayName: String) {
@@ -58,23 +66,43 @@ class OpenWakeWord private constructor(
     // ------------------------------------------------------------------
 
     class Builder(private val context: Context) {
-        private var modelSource: ModelSource = ModelSource.BuiltIn(BuiltInModel.HEY_JARVIS)
+        private val models = mutableListOf(
+            WakeWordConfig(ModelSource.BuiltIn(BuiltInModel.HEY_JARVIS), "Hey Jarvis", 0.5f, false)
+        )
         private var threshold = 0.5f
         private var debounceMs = 2000L
 
         /** Use one of the bundled pre-trained models. */
         fun setModel(model: BuiltInModel) = apply {
-            modelSource = ModelSource.BuiltIn(model)
+            models.clear()
+            models.add(WakeWordConfig(ModelSource.BuiltIn(model), model.displayName, threshold, false))
         }
 
         /** Use a custom ONNX model from the app's assets folder. */
         fun setModelAsset(assetPath: String) = apply {
-            modelSource = ModelSource.Asset(assetPath)
+            models.clear()
+            models.add(WakeWordConfig(ModelSource.Asset(assetPath), assetPath.substringAfterLast("/").substringBeforeLast("."), threshold, false))
         }
 
         /** Use a custom ONNX model loaded as raw bytes. */
         fun setModelBytes(bytes: ByteArray) = apply {
-            modelSource = ModelSource.Raw(bytes)
+            models.clear()
+            models.add(WakeWordConfig(ModelSource.Raw(bytes), "Custom", threshold, false))
+        }
+
+        /** Add an additional model without starting a second microphone capture. */
+        fun addModelAsset(
+            assetPath: String,
+            displayName: String,
+            modelThreshold: Float = 0.5f,
+            optional: Boolean = true,
+            consecutiveFrames: Int = 1,
+        ) = apply {
+            require(models.none { it.label == displayName }) { "Duplicate wake-word label: $displayName" }
+            models.add(WakeWordConfig(
+                ModelSource.Asset(assetPath), displayName,
+                modelThreshold.coerceIn(0.01f, 0.99f), optional, consecutiveFrames.coerceIn(1, 12)
+            ))
         }
 
         /**
@@ -85,6 +113,8 @@ class OpenWakeWord private constructor(
          */
         fun setThreshold(threshold: Float) = apply {
             this.threshold = threshold.coerceIn(0.01f, 0.99f)
+            // Preserve historical Builder.setThreshold behavior for the primary model.
+            if (models.isNotEmpty()) models[0] = models[0].copy(threshold = this.threshold)
         }
 
         /**
@@ -97,7 +127,7 @@ class OpenWakeWord private constructor(
 
         fun build(): OpenWakeWord = OpenWakeWord(
             context.applicationContext,
-            modelSource,
+            models.toList(),
             threshold,
             debounceMs,
         )
@@ -139,8 +169,19 @@ class OpenWakeWord private constructor(
     private var ortEnv: OrtEnvironment? = null
     private var melSpecSession: OrtSession? = null
     private var embeddingSession: OrtSession? = null
-    private var wakeWordSession: OrtSession? = null
-    private var wakeWordInputName: String? = null
+    private class Classifier(
+        val label: String,
+        val session: OrtSession,
+        val inputName: String,
+        val threshold: Float,
+        val optional: Boolean = false,
+        val consecutiveFramesRequired: Int = 1,
+        var consecutiveFramesSeen: Int = 0,
+        var lastDetectionTime: Long = 0L,
+    )
+    private val classifiers = mutableListOf<Classifier>()
+    @Volatile var activeModels: List<String> = emptyList()
+        private set
 
     private var audioRecord: AudioRecord? = null
     private var processingThread: Thread? = null
@@ -150,8 +191,12 @@ class OpenWakeWord private constructor(
     var onAudioProgress: ((Long, Float) -> Unit)? = null
     var onError: ((Exception) -> Unit)? = null
     private var listener: OnDetectionListener? = null
-    private var lastDetectionTime = 0L
+    fun interface OnNamedDetectionListener {
+        fun onDetected(label: String, score: Float)
+    }
+    private var namedListener: OnNamedDetectionListener? = null
     private var predictionCount = 0
+    private var lastAnyDetectionTime = 0L
 
     private lateinit var rawBuffer: FloatArray
     private var rawWritePos = 0
@@ -196,6 +241,12 @@ class OpenWakeWord private constructor(
         processingThread?.start()
     }
 
+    /** Prefer this callback when listening for multiple phrases. */
+    fun startNamed(callback: OnNamedDetectionListener) {
+        namedListener = callback
+        start(OnDetectionListener { /* Named callback handles detections. */ })
+    }
+
     /** Stop listening. Can be restarted with [start]. */
     fun stop() {
         isRunning = false
@@ -208,18 +259,20 @@ class OpenWakeWord private constructor(
     fun release() {
         stop()
         try {
-            wakeWordSession?.close()
+            classifiers.forEach { it.session.close() }
+            classifiers.clear()
+            activeModels = emptyList()
             embeddingSession?.close()
             melSpecSession?.close()
             ortEnv?.close()
         } catch (e: Exception) {
             Log.w(TAG, "Error releasing ONNX sessions", e)
         }
-        wakeWordSession = null
         embeddingSession = null
         melSpecSession = null
         ortEnv = null
         listener = null
+        namedListener = null
         onAudioProgress = null
         onError = null
     }
@@ -242,14 +295,45 @@ class OpenWakeWord private constructor(
             loadAsset("openwakeword/embedding_model.onnx"), opts
         )
 
-        val modelBytes = when (val src = wakeWordModelSource) {
-            is ModelSource.BuiltIn -> loadAsset(src.model.assetPath)
-            is ModelSource.Asset -> loadAsset(src.path)
-            is ModelSource.Raw -> src.bytes
+        classifiers.clear()
+        for (config in wakeWordModels) {
+            // A missing or corrupt optional model must not disable Jarvis.
+            try {
+                val modelBytes = when (val src = config.source) {
+                    is ModelSource.BuiltIn -> loadAsset(src.model.assetPath)
+                    is ModelSource.Asset -> loadAsset(src.path)
+                    is ModelSource.Raw -> src.bytes
+                }
+                val session = ortEnv!!.createSession(modelBytes, opts)
+                try {
+                    require(session.inputNames.size == 1) { "Expected one classifier input" }
+                    val inputName = session.inputNames.first()
+                    val inputInfo = session.inputInfo[inputName]?.info as? ai.onnxruntime.TensorInfo
+                    require(inputInfo != null && inputInfo.shape.size == 3 &&
+                        (inputInfo.shape[0] == 1L || inputInfo.shape[0] == -1L) &&
+                        (inputInfo.shape[1] == FEATURE_WINDOW.toLong() || inputInfo.shape[1] == -1L) &&
+                        inputInfo.shape[2] == EMBEDDING_DIM.toLong()
+                    ) { "Invalid classifier input; expected [1,16,96]" }
+                    require(session.outputNames.size == 1) { "Expected one classifier output" }
+                    val outputName = session.outputNames.first()
+                    val outputInfo = session.outputInfo[outputName]?.info as? ai.onnxruntime.TensorInfo
+                    require(outputInfo != null && outputInfo.shape.isNotEmpty() &&
+                        outputInfo.shape.size <= 2 && outputInfo.shape.last() == 1L
+                    ) { "Invalid classifier output; expected [1,1] score" }
+                    classifiers.add(Classifier(config.label, session, inputName, config.threshold, config.optional, config.consecutiveFrames))
+                    Log.i(TAG, "Loaded wake-word model: ${config.label}")
+                } catch (badShape: Exception) {
+                    session.close()
+                    throw badShape
+                }
+            } catch (error: Exception) {
+                if (!config.optional) throw error
+                Log.e(TAG, "Optional wake-word model ${config.label} not loaded; keeping primary model", error)
+            }
         }
-        wakeWordSession = ortEnv!!.createSession(modelBytes, opts)
-        wakeWordInputName = wakeWordSession!!.inputNames.first()
-        Log.d(TAG, "Models loaded. Input name: $wakeWordInputName")
+        require(classifiers.isNotEmpty()) { "No wake-word models available" }
+        activeModels = classifiers.map { it.label }
+
     }
 
     private fun loadAsset(name: String): ByteArray =
@@ -271,7 +355,8 @@ class OpenWakeWord private constructor(
         repeat(FEATURE_WINDOW) { featureBuffer.add(FloatArray(EMBEDDING_DIM)) }
 
         predictionCount = 0
-        lastDetectionTime = 0L
+        classifiers.forEach { it.lastDetectionTime = 0L; it.consecutiveFramesSeen = 0 }
+        lastAnyDetectionTime = 0L
     }
 
     // ------------------------------------------------------------------
@@ -362,14 +447,49 @@ class OpenWakeWord private constructor(
                 val features = ArrayList<FloatArray>(FEATURE_WINDOW)
                 for (i in fStart until featureBuffer.size) features.add(featureBuffer[i])
 
-                val score = runWakeWordModel(features)
-                if (score >= threshold) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastDetectionTime > debounceMs) {
-                        lastDetectionTime = now
-                        Log.d(TAG, "Wake word detected! score=$score")
-                        val cb = listener
-                        mainHandler.post { if (isRunning) cb?.onDetected(score) }
+                // Both classifiers consume the SAME speech embeddings.
+                val classifierIterator = classifiers.iterator()
+                while (classifierIterator.hasNext()) {
+                    val classifier = classifierIterator.next()
+                    val score = try {
+                        runWakeWordModel(features, classifier)
+                    } catch (error: Exception) {
+                        if (!classifier.optional) throw error
+                        // A failing experimental EP classifier must never stop the
+                        // working Jarvis detector or interrupt microphone capture.
+                        Log.e(TAG, "Disabling failed optional model: ${classifier.label}", error)
+                        try { classifier.session.close() } catch (_: Exception) {}
+                        classifierIterator.remove()
+                        activeModels = classifiers.map { it.label }
+                        continue
+                    }
+                    // Keep historical Jarvis semantics: its required confirmation count is 1.
+                    // The experimental EP classifier requires several consecutive positive
+                    // 80-ms windows to reduce isolated high-scoring false positives.
+                    if (score.isFinite() && score >= classifier.threshold) {
+                        classifier.consecutiveFramesSeen =
+                            (classifier.consecutiveFramesSeen + 1).coerceAtMost(classifier.consecutiveFramesRequired)
+                        if (classifier.consecutiveFramesSeen < classifier.consecutiveFramesRequired) continue
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        // Global gate prevents one utterance being delivered twice.
+                        if (now - lastAnyDetectionTime > debounceMs &&
+                            now - classifier.lastDetectionTime > debounceMs) {
+                            lastAnyDetectionTime = now
+                            classifier.lastDetectionTime = now
+                            classifier.consecutiveFramesSeen = 0
+                            val label = classifier.label
+                            Log.d(TAG, "Wake word detected: $label score=$score")
+                            val cb = listener
+                            val named = namedListener
+                            mainHandler.post {
+                                if (isRunning) {
+                                    cb?.onDetected(score)
+                                    named?.onDetected(label, score)
+                                }
+                            }
+                        }
+                    } else {
+                        classifier.consecutiveFramesSeen = 0
                     }
                 }
             }
@@ -457,10 +577,10 @@ class OpenWakeWord private constructor(
         }
     }
 
-    private fun runWakeWordModel(features: List<FloatArray>): Float {
+    private fun runWakeWordModel(features: List<FloatArray>, classifier: Classifier): Float {
         val env = ortEnv ?: return 0f
-        val session = wakeWordSession ?: return 0f
-        val inputName = wakeWordInputName ?: return 0f
+        val session = classifier.session
+        val inputName = classifier.inputName
         return try {
             val flatData = FloatArray(FEATURE_WINDOW * EMBEDDING_DIM)
             for (i in 0 until FEATURE_WINDOW) {

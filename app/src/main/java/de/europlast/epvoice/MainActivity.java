@@ -22,7 +22,9 @@ public class MainActivity extends Activity {
             recognized.setText("Letzte Erkennung: " + prefs.getString("phrase", "(noch nichts erkannt)"));
             recognitionState.setText("Status: " + prefs.getString("state", "Bereit"));
             engineState.setText("Engine: " + prefs.getString("engine", "Nicht gestartet"));
-            eventCount.setText("Erkennungsereignisse: " + prefs.getString("events", "0") + " | letzter Score: " + prefs.getString("last_score", "–"));
+            eventCount.setText("Erkennungen: Jarvis " + prefs.getString("events_jarvis", "0")
+                    + " | EP " + prefs.getString("events_ep", "0")
+                    + " | letzter Score: " + prefs.getString("last_score", "–"));
             errorState.setText("Fehler: " + prefs.getString("error", "Keine"));
             uiHandler.postDelayed(this, 700);
         }
@@ -34,8 +36,8 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
-        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.2 Prüfung"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
-        TextView info = new TextView(this); info.setText("Aktivierungswort: Hey Jarvis (lokales ONNX-Modell)\n\nZum Starten muss diese App sichtbar sein. Danach läuft der Mikrofon-Dienst im Hintergrund. Sperrbildschirm-Erkennung ist geräteabhängig."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
+        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.3 Entwicklung"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
+        TextView info = new TextView(this); info.setText("Aktivierungswort: Hey Jarvis (offline)\nHey EP: experimentelles Offline-Modell mit 4-facher Bestätigung. Noch nicht auf Samsung validiert. Fehlt das Modell, läuft Jarvis allein weiter.\n\nZum Starten muss diese App sichtbar sein. Danach läuft der Mikrofon-Dienst im Hintergrund. Sperrbildschirm-Erkennung ist geräteabhängig."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
         recognitionState = new TextView(this); recognitionState.setTextSize(16);root.addView(recognitionState);

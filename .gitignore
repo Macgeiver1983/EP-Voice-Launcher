@@ -1,0 +1,13 @@
+# Originalstimmen nicht öffentlich in GitHub veröffentlichen!
+training/hey_ep/wav_16khz/
+training/hey_ep/generated/
+training/hey_ep/feature_cache/
+training/hey_ep/results/
+training/hey_ep/**/*.m4a
+training/hey_ep/**/*.wav
+*.apk
+.gradle/
+build/
+app/build/
+__pycache__/
+*.pyc

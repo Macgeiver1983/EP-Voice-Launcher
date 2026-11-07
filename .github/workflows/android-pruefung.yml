@@ -2,7 +2,7 @@ name: EP Voice – Modellprüfung und Android-Build
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'dev/**']
   pull_request:
 permissions:
   contents: read
@@ -26,12 +26,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: V0.4.2-Assets und Dual-Wakeword-Quellcode prüfen
+        run: python3 scripts/check_v043.py --skip-audio
       - name: Android-Build und Lint
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug :app:lintDebug 2>&1 | tee ci-build.log
       - name: Tatsächlich in der APK enthaltene Modelle prüfen
-        run: python3 scripts/download_and_verify_models.py --apk app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          python3 scripts/download_and_verify_models.py --apk app/build/outputs/apk/debug/app-debug.apk
+          if test -f app/src/main/assets/openwakeword/hey_ep.onnx; then
+            echo 'Experimental Hey EP model bundled; acoustic quality tests must be performed on phone.'
+          else
+            echo 'V0.4.3 DEV ONLY: hey_ep.onnx missing, Jarvis fallback only.'
+          fi
       - name: APK und Buildprotokoll bereitstellen
         if: always()
         uses: actions/upload-artifact@v4
@@ -56,6 +64,7 @@ jobs:
           set -o pipefail
           python -m pip install --disable-pip-version-check onnx==1.17.0 onnxruntime==1.20.1 numpy==1.26.4
           python scripts/download_and_verify_models.py 2>&1 | tee ci-model-download.log
+          python scripts/check_v043.py --skip-audio --require-model
       - name: Modellprotokolle bereitstellen
         if: always()
         uses: actions/upload-artifact@v4
