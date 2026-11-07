@@ -177,6 +177,8 @@ class OpenWakeWord private constructor(
         var consecutiveFramesSeen: Int = 0,
         var lastDetectionTime: Long = 0L,
         var lastScore: Float? = null,
+        var peakScore: Float? = null,
+        var longestConfirmation: Int = 0,
     )
     private val classifiers = mutableListOf<Classifier>()
     @Volatile var activeModels: List<String> = emptyList()
@@ -187,7 +189,9 @@ class OpenWakeWord private constructor(
     @Volatile private var isRunning = false
 
     // EP fix: report actual audio progress and asynchronous worker failures.
-    var onModelProgress: ((Map<String, Float?>) -> Unit)? = null
+    data class ModelProgress(val latest: Float?, val peak: Float?, val longestConfirmation: Int)
+
+    var onModelProgress: ((Map<String, ModelProgress>) -> Unit)? = null
     var onOptionalModelError: ((String, String) -> Unit)? = null
     var onAudioProgress: ((Long, Float) -> Unit)? = null
     var onError: ((Exception) -> Unit)? = null
@@ -427,7 +431,9 @@ class OpenWakeWord private constructor(
                 var peak = 0
                 for (s in frame) peak = maxOf(peak, kotlin.math.abs(s.toInt()))
                 val level = peak / 32768f
-                val scores = classifiers.associate { it.label to it.lastScore }
+                val scores = classifiers.associate { classifier ->
+                    classifier.label to ModelProgress(classifier.lastScore, classifier.peakScore, classifier.longestConfirmation)
+                }
                 mainHandler.post {
                     if (isRunning) {
                         onAudioProgress?.invoke(count, level)
@@ -479,12 +485,15 @@ class OpenWakeWord private constructor(
                         continue
                     }
                     classifier.lastScore = score
+                    if (score.isFinite()) classifier.peakScore = maxOf(classifier.peakScore ?: score, score)
                     // Keep historical Jarvis semantics: its required confirmation count is 1.
                     // The experimental EP classifier requires several consecutive positive
                     // 80-ms windows to reduce isolated high-scoring false positives.
                     if (score.isFinite() && score >= classifier.threshold) {
                         classifier.consecutiveFramesSeen =
                             (classifier.consecutiveFramesSeen + 1).coerceAtMost(classifier.consecutiveFramesRequired)
+                        classifier.longestConfirmation =
+                            maxOf(classifier.longestConfirmation, classifier.consecutiveFramesSeen)
                         if (classifier.consecutiveFramesSeen < classifier.consecutiveFramesRequired) continue
                         val now = android.os.SystemClock.elapsedRealtime()
                         // Global gate prevents one utterance being delivered twice.

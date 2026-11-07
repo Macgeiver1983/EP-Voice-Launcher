@@ -26,7 +26,9 @@ public class MainActivity extends Activity {
             eventCount.setText("Hey Jarvis: " + prefs.getString("events_jarvis", "0")
                     + " Treffer | Score " + prefs.getString("score_jarvis", "–")
                     + "\nHey EP: " + prefs.getString("events_ep", "0")
-                    + " Treffer | Score " + prefs.getString("score_ep", "–"));
+                    + " Treffer | Score " + prefs.getString("score_ep", "–")
+                    + "\nHey EP seit Start: Spitze " + prefs.getString("peak_ep", "–")
+                    + " | Bestätigung " + prefs.getString("frames_ep", "–") + " von 4");
             voiceState.setText("ChatGPT: " + prefs.getString("handoff", "Noch nicht getestet"));
             String modelError = prefs.getString("model_error", "");
             errorState.setText("Fehler: " + prefs.getString("error", "Keine")
@@ -41,8 +43,8 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
-        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.5 Voice-Test"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
-        TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nWenn diese App sichtbar ist, versuchen beide Wörter direkt den ChatGPT-Sprachmodus zu öffnen. Im Hintergrund bleibt die Benachrichtigung.\n\nBeim Öffnen von ChatGPT pausiert die Erkennung. Danach kannst du sie mit STARTEN fortsetzen."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
+        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.6 Voice-Test"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
+        TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nWenn diese App sichtbar ist, öffnen beide Wörter ChatGPT. Aktiviere in ChatGPT unter Einstellungen → Sprache die Option „Mit Sprache starten“, falls vorhanden. ChatGPT startet dann Sprache bei einem neuen oder leeren Chat. Im Hintergrund bleibt die Benachrichtigung.\n\nBeim Öffnen von ChatGPT pausiert die Erkennung. Danach kannst du sie mit STARTEN fortsetzen."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
         recognitionState = new TextView(this); recognitionState.setTextSize(16);root.addView(recognitionState);
@@ -52,11 +54,9 @@ public class MainActivity extends Activity {
         voiceState = new TextView(this); voiceState.setTextSize(16); root.addView(voiceState);
         Button start = new Button(this); start.setText("Spracherkennung STARTEN"); root.addView(start);
         Button stop = new Button(this); stop.setText("Spracherkennung STOPPEN"); root.addView(stop);
-        Button voice = new Button(this); voice.setText("ChatGPT-Sprachmodus testen"); root.addView(voice);
-        Button open = new Button(this); open.setText("ChatGPT-App öffnen"); root.addView(open);
+        Button open = new Button(this); open.setText("ChatGPT-Start testen"); root.addView(open);
         start.setOnClickListener(v -> { if (!hasRequiredPermissions()) requestPermissions(permissions, 7); else startListening(); });
         stop.setOnClickListener(v -> { stopService(new Intent(this, WakeService.class)); status.setText("Dienst gestoppt"); });
-        voice.setOnClickListener(v -> startActivity(ChatGptHandoffActivity.voiceIntent(this)));
         open.setOnClickListener(v -> startActivity(new Intent(this, ChatGptHandoffActivity.class)));
         ScrollView scroll = new ScrollView(this); scroll.addView(root); setContentView(scroll); status.setText("Bereit");
     }
@@ -71,10 +71,10 @@ public class MainActivity extends Activity {
         super.onPause();
     }
     // Called on the main thread by the wake-word detector.
-    static boolean tryOpenVoice() {
+    static boolean tryOpenChatGpt() {
         MainActivity activity = resumedActivity.get();
         if (activity == null || activity.isFinishing() || !activity.hasWindowFocus()) return false;
-        activity.startActivity(ChatGptHandoffActivity.voiceIntent(activity));
+        activity.startActivity(new Intent(activity, ChatGptHandoffActivity.class));
         return true;
     }
     private boolean hasRequiredPermissions() {

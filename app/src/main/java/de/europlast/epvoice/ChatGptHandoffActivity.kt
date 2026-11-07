@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -17,18 +16,11 @@ import android.widget.Toast
 class ChatGptHandoffActivity : Activity() {
     companion object {
         private const val CHATGPT_PACKAGE = "com.openai.chatgpt"
-        private const val EXTRA_VOICE = "voice"
-        private const val VOICE_ACTIVITY = "com.openai.voice.assistant.AssistantActivity"
         private const val MICROPHONE_SETTLE_MS = 400L
-
-        @JvmStatic
-        fun voiceIntent(context: Context): Intent =
-            Intent(context, ChatGptHandoffActivity::class.java).putExtra(EXTRA_VOICE, true)
     }
 
     private var launchIntent: Intent? = null
     private var bound = false
-    private var voice = false
     private var resumed = false
     private val handler = Handler(Looper.getMainLooper())
     private val launchAfterRelease = Runnable {
@@ -37,14 +29,9 @@ class ChatGptHandoffActivity : Activity() {
     }
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            val launch = launchIntent ?: return
-            if (!resumed || isFinishing) return
+            if (launchIntent == null || !resumed || isFinishing) return
             (service as WakeService.HandoffBinder).releaseMicrophone()
-            if (voice) {
-                handler.postDelayed(launchAfterRelease, MICROPHONE_SETTLE_MS)
-            } else {
-                launchChatGpt(launch)
-            }
+            handler.postDelayed(launchAfterRelease, MICROPHONE_SETTLE_MS)
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -54,13 +41,8 @@ class ChatGptHandoffActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        voice = intent.getBooleanExtra(EXTRA_VOICE, false)
-        launchIntent = if (voice) findVoiceIntent() else packageManager.getLaunchIntentForPackage(CHATGPT_PACKAGE)
-        if (launchIntent == null) {
-            val installed = packageManager.getLaunchIntentForPackage(CHATGPT_PACKAGE) != null
-            showFailure(if (installed && voice) "Direkter Sprachmodus in dieser ChatGPT-Version nicht verfügbar."
-                else "ChatGPT-App nicht gefunden.")
-        }
+        launchIntent = packageManager.getLaunchIntentForPackage(CHATGPT_PACKAGE)
+        if (launchIntent == null) showFailure("ChatGPT-App nicht gefunden.")
     }
 
     override fun onResume() {
@@ -86,25 +68,10 @@ class ChatGptHandoffActivity : Activity() {
         super.onPause()
     }
 
-    private fun findVoiceIntent(): Intent? {
-        val component = ComponentName(CHATGPT_PACKAGE, VOICE_ACTIVITY)
-        // Experimental component. Check whether the installed ChatGPT exposes it to this app.
-        val info = try {
-            @Suppress("DEPRECATION")
-            packageManager.getActivityInfo(component, 0)
-        } catch (_: PackageManager.NameNotFoundException) {
-            return null
-        }
-        if (!info.exported || !info.enabled || !info.applicationInfo.enabled) return null
-        val permission = info.permission
-        if (permission != null && checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return null
-        return Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-
     private fun launchChatGpt(launch: Intent) {
         try {
             startActivity(launch)
-            recordHandoff(if (voice) "Sprachmodus angefordert" else "App-Start angefordert")
+            recordHandoff("ChatGPT geöffnet – Sprachstart über die ChatGPT-Einstellung")
             finish()
         } catch (_: ActivityNotFoundException) {
             showFailure("Das angeforderte ChatGPT-Ziel ist nicht verfügbar.")
@@ -119,6 +86,7 @@ class ChatGptHandoffActivity : Activity() {
 
     private fun showFailure(message: String) {
         recordHandoff(message)
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("state", "ChatGPT-Start fehlgeschlagen").apply()
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         finish()
     }

@@ -31,6 +31,9 @@ class WakeService : Service() {
         debug("phrase", "(noch nichts erkannt)")
         debug("score_jarvis", "–")
         debug("score_ep", "–")
+        debug("peak_ep", "–")
+        debug("frames_ep", "–")
+        debug("handoff", "Bereit")
         debug("model_error", "")
         val stop = PendingIntent.getService(this,1,Intent(this,WakeService::class.java).setAction("STOP"),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
@@ -55,11 +58,14 @@ class WakeService : Service() {
             detector?.onModelProgress = { scores ->
                 fun formatScore(label: String): String = when {
                     label !in scores -> "inaktiv"
-                    else -> scores[label]?.let { "%.3f".format(it) } ?: "–"
+                    else -> scores[label]?.latest?.let { "%.3f".format(it) } ?: "–"
                 }
+                val ep = scores["Hey EP"]
                 getSharedPreferences("ep_debug", MODE_PRIVATE).edit()
                     .putString("score_jarvis", formatScore("Hey Jarvis"))
                     .putString("score_ep", formatScore("Hey EP"))
+                    .putString("peak_ep", ep?.peak?.let { "%.3f".format(it) } ?: "–")
+                    .putString("frames_ep", ep?.longestConfirmation?.toString() ?: "–")
                     .apply()
             }
             detector?.onAudioProgress = { frames, peak ->
@@ -79,8 +85,8 @@ class WakeService : Service() {
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
-                    if (MainActivity.tryOpenVoice()) {
-                        status("$wakeWord erkannt – Sprachmodus wird angefordert")
+                    if (MainActivity.tryOpenChatGpt()) {
+                        status("$wakeWord erkannt – ChatGPT wird geöffnet")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else {
                         status("$wakeWord erkannt – Benachrichtigung öffnen")
