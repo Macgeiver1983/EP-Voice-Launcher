@@ -1,0 +1,32 @@
+name: V0.4.5 Test-APK bereitstellen
+on:
+  push:
+    branches: [delivery/v0.4.5-test-apk]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency: publish-v045-test-apk
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Geprüfte APK aus dem ursprünglichen Build abrufen
+        shell: bash
+        run: |
+          gh run download 42401829550 --name ep-voice-android --dir original-build
+          mapfile -t apk_files < <(find original-build -type f -name app-debug.apk)
+          test "${#apk_files[@]}" = 1
+          cp "${apk_files[0]}" EP_Voice_Launcher_V045_Test.apk
+          echo "ced168e069a3f59d9b08f4a2e089e2f325836ee9d297dc610801e8b54ce1187a  EP_Voice_Launcher_V045_Test.apk" | sha256sum --check
+      - name: APK als Testversion bereitstellen
+        shell: bash
+        run: |
+          gh release create v0.4.5-test EP_Voice_Launcher_V045_Test.apk \
+            --target 4b335ba832a39d2caee0a8112f2c96e2f0375180 \
+            --prerelease --latest=false --title "EP Voice Launcher V0.4.5 Voice-Test" \
+            --notes "Test-APK aus dem Android-Build 42401829550. Testet den direkten Start des ChatGPT-Sprachmodus bei sichtbarem EP Voice. Ein Samsung-Gerätetest für die Sprachübergabe steht noch aus."
