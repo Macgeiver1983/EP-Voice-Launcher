@@ -11,9 +11,10 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ScrollView;
+import java.lang.ref.WeakReference;
 
 public class MainActivity extends Activity {
-    private static MainActivity resumedActivity;
+    private static WeakReference<MainActivity> resumedActivity = new WeakReference<>(null);
     private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState;
     private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
@@ -61,17 +62,17 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume();
-        resumedActivity = this;
+        resumedActivity = new WeakReference<>(this);
         uiHandler.post(refresh);
     }
     @Override protected void onPause() {
-        if (resumedActivity == this) resumedActivity = null;
+        if (resumedActivity.get() == this) resumedActivity.clear();
         uiHandler.removeCallbacks(refresh);
         super.onPause();
     }
     // Called on the main thread by the wake-word detector.
     static boolean tryOpenVoice() {
-        MainActivity activity = resumedActivity;
+        MainActivity activity = resumedActivity.get();
         if (activity == null || activity.isFinishing() || !activity.hasWindowFocus()) return false;
         activity.startActivity(ChatGptHandoffActivity.voiceIntent(activity));
         return true;
