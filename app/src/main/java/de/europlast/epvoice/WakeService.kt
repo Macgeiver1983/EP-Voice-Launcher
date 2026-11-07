@@ -79,8 +79,13 @@ class WakeService : Service() {
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
-                    status("$wakeWord erkannt – Benachrichtigung öffnen")
-                    showLaunchNotification(wakeWord)
+                    if (MainActivity.tryOpenVoice()) {
+                        status("$wakeWord erkannt – Sprachmodus wird angefordert")
+                        getSystemService(NotificationManager::class.java).cancel(1002)
+                    } else {
+                        status("$wakeWord erkannt – Benachrichtigung öffnen")
+                        showLaunchNotification(wakeWord)
+                    }
                 }
             }
             debug("engine", "start() zurückgekehrt; Audiofluss nicht unabhängig bestätigt")
