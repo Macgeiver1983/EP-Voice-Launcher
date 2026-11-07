@@ -11,6 +11,7 @@ class WakeService : Service() {
     private val channel = "ep_voice"
     private var lastTrigger = 0L
     private var failed = false
+    private var handedOff = false
     private fun debug(key: String, value: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString(key, value).apply() }
     private fun status(s: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("state",s).apply() }
     override fun onCreate() {
@@ -21,6 +22,7 @@ class WakeService : Service() {
         if (intent?.action == "STOP") { stopSelf(); return START_NOT_STICKY }
         if (detector != null) return START_NOT_STICKY
         failed = false
+        handedOff = false
         debug("engine", "Initialisierung läuft")
         debug("events", "0")
         debug("events_jarvis", "0")
@@ -94,26 +96,42 @@ class WakeService : Service() {
         return START_NOT_STICKY
     }
     private fun showLaunchNotification(wakeWord: String) {
-        val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
-        if (launch == null) { status("ChatGPT nicht installiert oder nicht sichtbar"); return }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val pending = PendingIntent.getActivity(this,2,launch,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        if (packageManager.getLaunchIntentForPackage("com.openai.chatgpt") == null) {
+            status("ChatGPT nicht installiert oder nicht sichtbar")
+            return
+        }
+        val handoff = Intent(this, ChatGptHandoffActivity::class.java)
+        val pending = PendingIntent.getActivity(this, 2, handoff,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("$wakeWord erkannt").setContentText("Tippen, um ChatGPT zu öffnen")
+            .setContentTitle("$wakeWord erkannt").setContentText("Tippen für ChatGPT und Mikrofonfreigabe")
             .setContentIntent(pending).setAutoCancel(true).build()
         getSystemService(NotificationManager::class.java).notify(1002,notification)
     }
-    override fun onDestroy() {
-        detector?.stop(); detector?.release(); detector = null
-        if (!failed) status("Erkennung gestoppt")
-        super.onDestroy()
-    }
-    override fun onBind(intent: Intent?): IBinder? = null
-    companion object {
-        @JvmStatic fun openChatGPT(context: Context) {
-            val i = context.packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
-            if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(i) }
-            else android.widget.Toast.makeText(context,"ChatGPT nicht gefunden",android.widget.Toast.LENGTH_LONG).show()
+    inner class HandoffBinder : Binder() {
+        fun releaseMicrophone() {
+            handedOff = true
+            releaseDetector()
+            debug("engine", "Mikrofon freigegeben")
+            status("Erkennung pausiert – zum Fortsetzen STARTEN")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
+
+    private fun releaseDetector() {
+        detector?.release()
+        detector = null
+    }
+
+    override fun onDestroy() {
+        releaseDetector()
+        if (!failed && !handedOff) {
+            debug("engine", "Mikrofon inaktiv")
+            status("Erkennung gestoppt")
+        }
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder = HandoffBinder()
 }

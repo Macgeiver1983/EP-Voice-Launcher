@@ -38,8 +38,8 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
-        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.3 Entwicklung"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
-        TextView info = new TextView(this); info.setText("Aktivierungswort: Hey Jarvis (offline)\nHey EP: experimentelles Offline-Modell mit 4-facher Bestätigung. Noch nicht auf Samsung validiert. Fehlt das Modell, läuft Jarvis allein weiter.\n\nZum Starten muss diese App sichtbar sein. Danach läuft der Mikrofon-Dienst im Hintergrund. Sperrbildschirm-Erkennung ist geräteabhängig."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
+        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.4 ChatGPT-Übergabe"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
+        TextView info = new TextView(this); info.setText("Aktivierungswort: Hey Jarvis (offline)\nHey EP: experimentelles Offline-Modell mit 4-facher Bestätigung. Noch nicht auf Samsung validiert. Fehlt das Modell, läuft Jarvis allein weiter.\n\nZum Starten muss diese App sichtbar sein. Danach läuft der Mikrofon-Dienst im Hintergrund. Beim Öffnen von ChatGPT wird die Erkennung pausiert. Danach kannst du sie mit STARTEN fortsetzen."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
         recognitionState = new TextView(this); recognitionState.setTextSize(16);root.addView(recognitionState);
@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
         Button open = new Button(this); open.setText("ChatGPT testweise öffnen"); root.addView(open);
         start.setOnClickListener(v -> { if (!hasRequiredPermissions()) requestPermissions(permissions, 7); else startListening(); });
         stop.setOnClickListener(v -> { stopService(new Intent(this, WakeService.class)); status.setText("Dienst gestoppt"); });
-        open.setOnClickListener(v -> WakeService.openChatGPT(this));
+        open.setOnClickListener(v -> startActivity(new Intent(this, ChatGptHandoffActivity.class)));
         ScrollView scroll = new ScrollView(this); scroll.addView(root); setContentView(scroll); status.setText("Bereit");
     }
     @Override protected void onResume() {super.onResume();uiHandler.post(refresh);}

@@ -12,6 +12,8 @@
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
+        <activity android:name=".ChatGptHandoffActivity" android:exported="false"
+            android:excludeFromRecents="true" />
         <service android:name=".WakeService" android:exported="false" android:foregroundServiceType="microphone" />
     </application>
 </manifest>
