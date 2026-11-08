@@ -55,23 +55,7 @@ class ChatGptHandoffActivity : Activity() {
 
     private fun launchVoice() {
         val component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
-        note("V0.5.3: public assistant intent test")
-        // ChatGPT widget PendingIntents are not publicly invocable by other apps.
-        // Only attempt the documented Android assistant intent if ChatGPT handles it.
-        try {
-            val assist = Intent(Intent.ACTION_ASSIST).setPackage("com.openai.chatgpt")
-            val target = assist.resolveActivity(packageManager)
-            if (target != null && target.packageName == "com.openai.chatgpt") {
-                note("ACTION_ASSIST target: $target")
-                startActivity(assist)
-                note("Assistant launch requested; voice mode not yet confirmed")
-                finish()
-                return
-            }
-            note("ACTION_ASSIST: no exported ChatGPT activity found")
-        } catch (e: Exception) {
-            note("ACTION_ASSIST failed: ${e.javaClass.simpleName}: ${e.message}")
-        }
+        note("ACTION_ASSIST disabled: device test confirmed no active voice conversation")
         try {
             val info = packageManager.getActivityInfo(component, 0)
             note("Direktziel: exported=${info.exported}, permission=${info.permission ?: "keine"}")
