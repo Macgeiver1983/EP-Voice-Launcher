@@ -42,6 +42,7 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     private var launchIntent: Intent? = null
     private var deadline = 0L
     private var sawChatGpt = false
+    private var observedChatGptSession = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -49,7 +50,25 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // The time-limited request drives scans. Events alone never initiate an action.
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val packageName = event.packageName?.toString() ?: return
+        val prefs = getSharedPreferences("ep_voice_control", MODE_PRIVATE)
+        if (!prefs.getBoolean("awaiting_chatgpt", false) || prefs.getBoolean("manual_stop", false)) {
+            observedChatGptSession = false
+            return
+        }
+        if (packageName == CHATGPT_PACKAGE) {
+            observedChatGptSession = true
+        } else if (observedChatGptSession && packageName != this.packageName) {
+            observedChatGptSession = false
+            prefs.edit().putBoolean("awaiting_chatgpt", false).apply()
+            try {
+                startService(Intent(this, WakeService::class.java).setAction("RESUME"))
+                record("ChatGPT verlassen – Wiederaufnahme angefordert.")
+            } catch (e: Exception) {
+                record("Wiederaufnahme blockiert: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
     }
 
     override fun onInterrupt() {
