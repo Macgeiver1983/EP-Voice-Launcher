@@ -16,6 +16,7 @@ import android.widget.Toast
 /** Hands microphone to ChatGPT, then tries a direct voice activity and a scoped voice link. */
 class ChatGptHandoffActivity : Activity() {
     private var bound = false
+    private val trace = StringBuilder()
     private var resumed = false
     private val handler = Handler(Looper.getMainLooper())
     private val startVoice = Runnable { if (resumed && !isFinishing) launchVoice() }
@@ -54,25 +55,29 @@ class ChatGptHandoffActivity : Activity() {
 
     private fun launchVoice() {
         val component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
+        note("Test gestartet: direkte Aktivität, Sprachlink, Hauptfenster")
         try {
             val info = packageManager.getActivityInfo(component, 0)
+            note("Direktziel: exported=${info.exported}, permission=${info.permission ?: "keine"}")
             if (info.exported && info.permission == null) {
                 startActivity(Intent().setComponent(component))
-                record("Direkter ChatGPT-Sprachstart angefordert")
+                note("Direkter ChatGPT-Sprachstart angefordert; Erfolg nicht bestätigt")
                 finish()
                 return
             }
-        } catch (_: Exception) {
-            record("Direkter Sprachstart nicht verfügbar; prüfe Sprachlink")
+        } catch (e: Exception) {
+            note("Direktstart fehlgeschlagen: ${e.javaClass.simpleName}: ${e.message ?: "ohne Meldung"}")
         }
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chat.com/?mode=voice"))
                 .setPackage("com.openai.chatgpt"))
-            record("ChatGPT-Sprachlink angefordert")
+            note("Sprachlink gestartet; tatsächlicher Sprachmodus nicht bestätigt")
             finish()
-        } catch (_: ActivityNotFoundException) {
+        } catch (e: ActivityNotFoundException) {
+            note("Sprachlink: ActivityNotFoundException")
             fallback()
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            note("Sprachlink: SecurityException: ${e.message ?: "ohne Meldung"}")
             fallback()
         }
     }
@@ -82,14 +87,20 @@ class ChatGptHandoffActivity : Activity() {
         if (intent == null) { showFailure("ChatGPT nicht verfügbar."); return }
         try {
             startActivity(intent)
-            record("Nur ChatGPT geöffnet – Sprachstart nicht bestätigt")
+            note("Fallback: nur ChatGPT-Hauptfenster geöffnet")
             finish()
         } catch (_: Exception) {
             showFailure("ChatGPT konnte nicht gestartet werden.")
         }
     }
 
+    private fun note(message: String) {
+        trace.append(message).append("\\n")
+        record(message)
+    }
+
     private fun record(message: String) {
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("voice_trace", trace.toString()).apply()
         getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("handoff", message).apply()
     }
     private fun showFailure(message: String) {
