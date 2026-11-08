@@ -21,8 +21,18 @@ class WakeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
             ChatGptVoiceAccessibilityService.cancelPendingStart()
+            getSharedPreferences("ep_voice_control", MODE_PRIVATE).edit().putBoolean("manual_stop", true).apply()
             stopSelf()
             return START_NOT_STICKY
+        }
+        if (intent?.action != "START") {
+            // Never revive recognition from an implicit service restart after manual STOP.
+            if (getSharedPreferences("ep_voice_control", MODE_PRIVATE).getBoolean("manual_stop", false)) {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        } else {
+            getSharedPreferences("ep_voice_control", MODE_PRIVATE).edit().putBoolean("manual_stop", false).apply()
         }
         if (detector != null) return START_NOT_STICKY
         failed = false
