@@ -100,7 +100,10 @@ class WakeService : Service() {
                         // Android may still reject background activity launches, especially
                         // while locked; the notification remains the safe fallback.
                         try {
-                            val handoff = Intent(this, ChatGptHandoffActivity::class.java)
+                            val canOverlay = android.provider.Settings.canDrawOverlays(this)
+                            debug("overlay_permission", if (canOverlay) "Erteilt" else "Nicht erteilt")
+                            if (!canOverlay) throw SecurityException("Einblenden über andere Apps nicht erlaubt")
+                            val handoff = Intent(this, LockscreenHandoffActivity::class.java)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                             startActivity(handoff)
                             debug("background_handoff", "Start aus WakeService angefordert; Anzeige nicht bestätigt")
