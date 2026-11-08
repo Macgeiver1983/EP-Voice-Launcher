@@ -79,7 +79,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    if: github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' || github.ref == 'refs/heads/dev/v0.4.7-accessibility-minimal-test') && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
