@@ -59,11 +59,13 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
         }
         if (packageName == CHATGPT_PACKAGE) {
             observedChatGptSession = true
-        } else if (observedChatGptSession && packageName != "com.android.systemui") {
+        } else if (observedChatGptSession && packageName != "com.android.systemui" &&
+            packageName != "com.google.android.permissioncontroller" &&
+            packageName != "com.samsung.android.permissioncontroller") {
             observedChatGptSession = false
-            prefs.edit().putBoolean("awaiting_chatgpt", false).apply()
             try {
                 startService(Intent(this, WakeService::class.java).setAction("RESUME"))
+                prefs.edit().putBoolean("awaiting_chatgpt", false).apply()
                 record("ChatGPT verlassen – Wiederaufnahme angefordert.")
             } catch (e: Exception) {
                 record("Wiederaufnahme blockiert: ${e.javaClass.simpleName}: ${e.message}")
