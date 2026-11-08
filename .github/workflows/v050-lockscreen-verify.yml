@@ -1,7 +1,7 @@
 name: EP Voice V0.5.0 lockscreen verification
 on:
   push:
-    branches: [dev/v0.5.0-lockscreen-handoff, test/v0.5.2-no-accessibility, test/v0.5.3-assistant-widget-path]
+    branches: [dev/v0.5.0-lockscreen-handoff, test/v0.5.2-no-accessibility, test/v0.5.3-assistant-widget-path, test/v0.5.4-minimal-permissions]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,5 +31,5 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: ep-voice-v053-assistant-intent-test
+          name: ep-voice-v054-minimal-permissions-test
           path: app/build/outputs/apk/debug/app-debug.apk
