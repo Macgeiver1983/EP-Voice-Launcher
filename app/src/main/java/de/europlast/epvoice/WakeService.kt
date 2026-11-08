@@ -21,7 +21,7 @@ class WakeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
             ChatGptVoiceAccessibilityService.cancelPendingStart()
-            getSharedPreferences("ep_voice_control", MODE_PRIVATE).edit().putBoolean("manual_stop", true).apply()
+            getSharedPreferences("ep_voice_control", MODE_PRIVATE).edit().putBoolean("manual_stop", true).putBoolean("awaiting_chatgpt", false).apply()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -38,6 +38,7 @@ class WakeService : Service() {
         if (detector != null) return START_NOT_STICKY
         failed = false
         handedOff = false
+        getSharedPreferences("ep_voice_control", MODE_PRIVATE).edit().putBoolean("awaiting_chatgpt", false).apply()
         debug("engine", "Initialisierung läuft")
         debug("events", "0")
         debug("events_jarvis", "0")
@@ -158,6 +159,7 @@ class WakeService : Service() {
 
     private fun releaseMicrophone() {
         handedOff = true
+        getSharedPreferences("ep_voice_control", MODE_PRIVATE).edit().putBoolean("awaiting_chatgpt", true).apply()
         releaseDetector()
         debug("engine", "Mikrofon freigegeben")
         status("Erkennung pausiert – wartet auf Ende von ChatGPT")
