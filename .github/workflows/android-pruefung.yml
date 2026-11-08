@@ -76,6 +76,9 @@ jobs:
           if-no-files-found: warn
 
   signed-test:
+    defaults:
+      run:
+        shell: bash
     if: github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -130,7 +133,9 @@ jobs:
           apk=evidence/EP_Voice_Launcher_V047_Signed_Test.apk
           "$tools/zipalign" -c -p 4 "$apk"
           "$tools/apksigner" verify --verbose --print-certs --Werr "$apk" | tee evidence/qa-signature.txt
-          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/qa-signature.txt
+          # API 29+ selects v3. Exercise v2 separately on its own platform range.
+          "$tools/apksigner" verify --verbose --Werr --min-sdk-version 27 --max-sdk-version 27 "$apk" | tee evidence/qa-signature-v2.txt
+          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/qa-signature-v2.txt
           grep -F 'Verified using v3 scheme (APK Signature Scheme v3): true' evidence/qa-signature.txt
           grep -F 'Number of signers: 1' evidence/qa-signature.txt
           "$tools/apksigner" verify --verbose --Werr --min-sdk-version 36 --max-sdk-version 36 "$apk" | tee evidence/qa-signature-api36.txt
