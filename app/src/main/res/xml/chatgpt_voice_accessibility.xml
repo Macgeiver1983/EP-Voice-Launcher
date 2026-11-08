@@ -6,4 +6,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/voice_accessibility_description"
     android:notificationTimeout="200"
-    android:packageNames="com.openai.chatgpt" />
+    />
