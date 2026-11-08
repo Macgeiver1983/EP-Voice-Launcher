@@ -47,8 +47,8 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
-        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.8 Diagnose"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
-        TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nEinrichtung: Bedienungshilfe öffnen → Installierte Apps → EP Voice – ChatGPT-Sprachstart → einschalten. Die Hilfe prüft bei einem Startauftrag kurz die sichtbaren Bedienelemente in ChatGPT.\n\nBei entsperrtem, eingeschaltetem Bildschirm versucht EP Voice nach dem Aktivierungswort einmal den Sprachknopf zu betätigen. Beim Wechsel zu ChatGPT pausiert die Erkennung. Danach kannst du sie mit STARTEN fortsetzen."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
+        TextView heading = new TextView(this); heading.setText("EP Voice Launcher – Entwicklungstest"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
+        TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nEinrichtung: Bedienungshilfe öffnen → Installierte Apps → EP Voice – ChatGPT-Sprachstart → einschalten. Die Hilfe prüft bei einem Startauftrag kurz die sichtbaren Bedienelemente in ChatGPT.\n\nBei entsperrtem, eingeschaltetem Bildschirm versucht EP Voice nach dem Aktivierungswort einmal den Sprachknopf zu betätigen. Beim Wechsel zu ChatGPT pausiert die Erkennung. Danach soll die Erkennung automatisch fortgesetzt werden."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
         recognitionState = new TextView(this); recognitionState.setTextSize(16);root.addView(recognitionState);
@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
         Button stop = new Button(this); stop.setText("Spracherkennung STOPPEN"); root.addView(stop);
         Button open = new Button(this); open.setText("ChatGPT-Sprachstart testen"); root.addView(open);
         start.setOnClickListener(v -> { if (!hasRequiredPermissions()) requestPermissions(permissions, 7); else startListening(); });
-        stop.setOnClickListener(v -> { ChatGptVoiceAccessibilityService.cancelPendingStart(); stopService(new Intent(this, WakeService.class)); status.setText("Dienst gestoppt"); });
+        stop.setOnClickListener(v -> { ChatGptVoiceAccessibilityService.cancelPendingStart(); startService(new Intent(this, WakeService.class).setAction("STOP")); status.setText("Dienst gestoppt"); });
         open.setOnClickListener(v -> startActivity(new Intent(this, ChatGptHandoffActivity.class)));
         ScrollView scroll = new ScrollView(this); scroll.addView(root); setContentView(scroll); status.setText("Bereit");
     }
@@ -100,7 +100,7 @@ public class MainActivity extends Activity {
         return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             && (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
     }
-    private void startListening() { startForegroundService(new Intent(this, WakeService.class)); status.setText("Dienst gestartet – siehe Benachrichtigung"); }
+    private void startListening() { startForegroundService(new Intent(this, WakeService.class).setAction("START")); status.setText("Dienst gestartet – siehe Benachrichtigung"); }
     @Override public void onRequestPermissionsResult(int code, String[] p, int[] grants) {
         super.onRequestPermissionsResult(code,p,grants);
         if(code==7 && hasRequiredPermissions()) startListening();
