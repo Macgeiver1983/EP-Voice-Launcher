@@ -2,8 +2,15 @@ plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'de.europlast.epvoice'
     compileSdk 35
-    defaultConfig { applicationId 'de.europlast.epvoice'; minSdk 29; targetSdk 35; versionCode 11; versionName '0.4.7-dev'; manifestPlaceholders = [launcherLabel: 'EP Voice Launcher'] }
+    defaultConfig { applicationId 'de.europlast.epvoice'; minSdk 29; targetSdk 35; versionCode 12; versionName '0.4.7'; manifestPlaceholders = [launcherLabel: 'EP Voice Launcher'] }
     buildTypes {
+        qa {
+            initWith release
+            applicationIdSuffix '.v047test'
+            versionNameSuffix '-signed'
+            debuggable false
+            manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Signaturtest']
+        }
         debug {
             applicationIdSuffix '.v047test'
             manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Voice-Test']

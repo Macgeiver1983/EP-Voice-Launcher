@@ -21,9 +21,8 @@ Systemdialoge bleiben der manuellen Bestätigung vorbehalten.
    installieren und EP Voice öffnen.
 2. „Bedienungshilfe öffnen“ antippen. Unter „Installierte Apps“ den
    Eintrag „EP Voice – ChatGPT-Sprachstart“ auswählen und einschalten.
-   Bei einer Sperre für die seitlich installierte APK in den
-   Android-App-Infos von EP Voice unter ⋮ die eingeschränkten
-   Einstellungen zulassen, sofern Android diese Option anzeigt.
+   Falls Android die Installation oder die Freigabe sperrt, den Test
+   beenden. Hinweise dazu stehen in der [Sicherheitsprüfung](SECURITY_TEST_V047.md).
 3. ChatGPT einmal regulär öffnen und Mikrofonfreigabe, eventuelle
    Ersteinrichtung des Sprachmodus und Anmeldung abschließen.
 4. In EP Voice „Bedienungshilfe verbunden“ prüfen und Erkennung starten.

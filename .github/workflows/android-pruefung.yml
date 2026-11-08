@@ -74,3 +74,84 @@ jobs:
             ci-model-report.txt
             ci-model-download.log
           if-no-files-found: warn
+
+  signed-test:
+    if: github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;34.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Originale V0.4.7-APK und Signatur prüfen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p evidence
+          gh release download v0.4.7-test --pattern EP_Voice_Launcher_V047_Test.apk --dir "$RUNNER_TEMP/old-apk"
+          old="$RUNNER_TEMP/old-apk/EP_Voice_Launcher_V047_Test.apk"
+          echo "33394f7b61635f2e8584bf9afd579a5eef50ec9d6aa15bdbaefcd5a05bbe0110  $old" | sha256sum --check
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          "$tools/apksigner" verify --verbose --print-certs --Werr "$old" | tee evidence/original-signature.txt
+          "$tools/apksigner" verify --verbose --Werr --min-sdk-version 36 --max-sdk-version 36 "$old" | tee evidence/original-signature-api36.txt
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$old" > evidence/original-manifest.xml
+      - name: Nicht debuggable Test-APK bauen
+        run: gradle --no-daemon --stacktrace :app:assembleQa :app:lintQa
+      - name: Mit einem separaten einmaligen Testschlüssel signieren
+        run: |
+          umask 077
+          export EP_TEST_PASS="$(openssl rand -hex 24)"
+          printf '::add-mask::%s\n' "$EP_TEST_PASS"
+          key="$RUNNER_TEMP/ep-voice-qa.p12"
+          trap 'rm -f "$key"' EXIT
+          keytool -genkeypair -storetype PKCS12 -keystore "$key" -alias ep-voice-qa \
+            -storepass:env EP_TEST_PASS -keypass:env EP_TEST_PASS \
+            -keyalg RSA -keysize 3072 -sigalg SHA256withRSA -validity 3650 \
+            -dname "CN=EP Voice Launcher V0.4.7 QA Test, O=EP Voice Launcher"
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          "$tools/zipalign" -f -p 4 app/build/outputs/apk/qa/app-qa-unsigned.apk "$RUNNER_TEMP/ep-voice-aligned.apk"
+          "$tools/apksigner" sign --ks "$key" --ks-key-alias ep-voice-qa \
+            --ks-pass env:EP_TEST_PASS --key-pass env:EP_TEST_PASS \
+            --v1-signing-enabled false --v2-signing-enabled true \
+            --v3-signing-enabled true --v4-signing-enabled false \
+            --out evidence/EP_Voice_Launcher_V047_Signed_Test.apk "$RUNNER_TEMP/ep-voice-aligned.apk"
+      - name: Signatur, Zertifikat, Manifest und Offline-Modelle prüfen
+        run: |
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          apk=evidence/EP_Voice_Launcher_V047_Signed_Test.apk
+          "$tools/zipalign" -c -p 4 "$apk"
+          "$tools/apksigner" verify --verbose --print-certs --Werr "$apk" | tee evidence/qa-signature.txt
+          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/qa-signature.txt
+          grep -F 'Verified using v3 scheme (APK Signature Scheme v3): true' evidence/qa-signature.txt
+          grep -F 'Number of signers: 1' evidence/qa-signature.txt
+          "$tools/apksigner" verify --verbose --Werr --min-sdk-version 36 --max-sdk-version 36 "$apk" | tee evidence/qa-signature-api36.txt
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          "$analyzer" manifest print "$apk" > evidence/qa-manifest.xml
+          "$analyzer" resources xml --file /res/xml/chatgpt_voice_accessibility.xml "$apk" > evidence/qa-accessibility.xml
+          python3 scripts/verify_v047_test_manifest.py evidence/qa-manifest.xml evidence/qa-accessibility.xml
+          python3 scripts/download_and_verify_models.py --apk "$apk" | tee evidence/qa-models.txt
+          sha256sum "$apk" | tee evidence/qa-apk-sha256.txt
+      - name: Prüfprotokolle bereitstellen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ep-voice-v047-signing-evidence
+          path: |
+            evidence/*.txt
+            evidence/*.xml
+            app/build/reports/lint-results-qa.*
+      - name: Verifizierte signierte Test-APK bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ep-voice-v047-signed-test
+          path: evidence/EP_Voice_Launcher_V047_Signed_Test.apk
+          if-no-files-found: error

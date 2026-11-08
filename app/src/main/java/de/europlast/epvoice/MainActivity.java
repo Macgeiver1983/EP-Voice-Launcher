@@ -2,6 +2,7 @@ package de.europlast.epvoice;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -57,7 +58,13 @@ public class MainActivity extends Activity {
         voiceState = new TextView(this); voiceState.setTextSize(16); root.addView(voiceState);
         accessibilityState = new TextView(this); accessibilityState.setTextSize(16); root.addView(accessibilityState);
         Button setup = new Button(this); setup.setText("Bedienungshilfe öffnen"); root.addView(setup);
-        setup.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        setup.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle(R.string.voice_accessibility_label)
+                .setMessage(R.string.voice_accessibility_description)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton("Zu Android-Einstellungen",
+                        (dialog, which) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
+                .show());
         Button start = new Button(this); start.setText("Spracherkennung STARTEN"); root.addView(start);
         Button stop = new Button(this); stop.setText("Spracherkennung STOPPEN"); root.addView(stop);
         Button open = new Button(this); open.setText("ChatGPT-Sprachstart testen"); root.addView(open);
