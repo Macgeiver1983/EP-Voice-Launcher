@@ -19,7 +19,11 @@ class WakeService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(channel,"EP Voice Dauererkennung",NotificationManager.IMPORTANCE_LOW))
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "STOP") { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == "STOP") {
+            ChatGptVoiceAccessibilityService.cancelPendingStart()
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (detector != null) return START_NOT_STICKY
         failed = false
         handedOff = false
@@ -85,7 +89,9 @@ class WakeService : Service() {
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
-                    if (MainActivity.tryOpenChatGpt()) {
+                    if (ChatGptVoiceAccessibilityService.requestVoiceStart { releaseMicrophone() }) {
+                        getSystemService(NotificationManager::class.java).cancel(1002)
+                    } else if (MainActivity.tryOpenChatGpt()) {
                         status("$wakeWord erkannt – ChatGPT wird geöffnet")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else {
@@ -107,7 +113,7 @@ class WakeService : Service() {
         return START_NOT_STICKY
     }
     private fun showLaunchNotification(wakeWord: String) {
-        if (packageManager.getLaunchIntentForPackage("com.openai.chatgpt") == null) {
+        if (packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE) == null) {
             status("ChatGPT nicht installiert oder nicht sichtbar")
             return
         }
@@ -120,14 +126,16 @@ class WakeService : Service() {
         getSystemService(NotificationManager::class.java).notify(1002,notification)
     }
     inner class HandoffBinder : Binder() {
-        fun releaseMicrophone() {
-            handedOff = true
-            releaseDetector()
-            debug("engine", "Mikrofon freigegeben")
-            status("Erkennung pausiert – zum Fortsetzen STARTEN")
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }
+        fun releaseMicrophone() = this@WakeService.releaseMicrophone()
+    }
+
+    private fun releaseMicrophone() {
+        handedOff = true
+        releaseDetector()
+        debug("engine", "Mikrofon freigegeben")
+        status("Erkennung pausiert – zum Fortsetzen STARTEN")
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun releaseDetector() {

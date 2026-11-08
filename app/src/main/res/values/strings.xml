@@ -1,0 +1,4 @@
+<resources>
+    <string name="voice_accessibility_label">EP Voice – ChatGPT-Sprachstart</string>
+    <string name="voice_accessibility_description">Öffnet nach einem erkannten Aktivierungswort ChatGPT und betätigt einmal den eindeutig erkannten Sprachknopf. Prüft dafür kurz die sichtbaren Bedienelemente in ChatGPT. Andere Apps werden nicht bedient. Bildschirminhalte werden weder gespeichert noch übertragen.</string>
+</resources>

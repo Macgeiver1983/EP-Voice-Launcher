@@ -14,11 +14,6 @@ import android.widget.Toast
 
 /** Releases the microphone before starting the requested ChatGPT activity. */
 class ChatGptHandoffActivity : Activity() {
-    companion object {
-        private const val CHATGPT_PACKAGE = "com.openai.chatgpt"
-        private const val MICROPHONE_SETTLE_MS = 400L
-    }
-
     private var launchIntent: Intent? = null
     private var bound = false
     private var resumed = false
@@ -30,8 +25,13 @@ class ChatGptHandoffActivity : Activity() {
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             if (launchIntent == null || !resumed || isFinishing) return
-            (service as WakeService.HandoffBinder).releaseMicrophone()
-            handler.postDelayed(launchAfterRelease, MICROPHONE_SETTLE_MS)
+            val binder = service as WakeService.HandoffBinder
+            if (ChatGptVoiceAccessibilityService.requestVoiceStart { binder.releaseMicrophone() }) {
+                finish()
+            } else {
+                binder.releaseMicrophone()
+                handler.postDelayed(launchAfterRelease, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -41,7 +41,7 @@ class ChatGptHandoffActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        launchIntent = packageManager.getLaunchIntentForPackage(CHATGPT_PACKAGE)
+        launchIntent = packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE)
         if (launchIntent == null) showFailure("ChatGPT-App nicht gefunden.")
     }
 
@@ -71,7 +71,7 @@ class ChatGptHandoffActivity : Activity() {
     private fun launchChatGpt(launch: Intent) {
         try {
             startActivity(launch)
-            recordHandoff("ChatGPT geöffnet – Sprachstart über die ChatGPT-Einstellung")
+            recordHandoff("ChatGPT-App geöffnet – Bedienungshilfe nicht verwendet")
             finish()
         } catch (_: ActivityNotFoundException) {
             showFailure("Das angeforderte ChatGPT-Ziel ist nicht verfügbar.")
