@@ -12,8 +12,8 @@ android {
             manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Signaturtest']
         }
         debug {
-            applicationIdSuffix '.v047test'
-            manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Voice-Test']
+            applicationIdSuffix '.v047diagnose'
+            manifestPlaceholders = [launcherLabel: 'EP Voice Diagnose ohne Bedienungshilfe']
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
