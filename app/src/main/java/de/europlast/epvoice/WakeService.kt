@@ -95,7 +95,20 @@ class WakeService : Service() {
                         status("$wakeWord erkannt – ChatGPT wird geöffnet")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else {
-                        status("$wakeWord erkannt – Benachrichtigung öffnen")
+                        // The old implementation never attempted a handoff unless MainActivity
+                        // was visible. Try the handoff from the foreground service as well.
+                        // Android may still reject background activity launches, especially
+                        // while locked; the notification remains the safe fallback.
+                        try {
+                            val handoff = Intent(this, ChatGptHandoffActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            startActivity(handoff)
+                            debug("background_handoff", "Start aus WakeService angefordert; Anzeige nicht bestätigt")
+                            status("$wakeWord erkannt – Hintergrundstart angefordert")
+                        } catch (e: Exception) {
+                            debug("background_handoff", "Android blockiert: ${e.javaClass.simpleName}: ${e.message}")
+                            status("$wakeWord erkannt – Benachrichtigung öffnen")
+                        }
                         showLaunchNotification(wakeWord)
                     }
                 }
