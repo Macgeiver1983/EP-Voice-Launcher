@@ -1,0 +1,32 @@
+name: Signierte V0.4.7-Test-APK bereitstellen
+on:
+  push:
+    branches: [delivery/v0.4.7-signed-test-apk]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency: publish-v047-signed-test-apk
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verifizierte APK und Berichte aus dem ursprünglichen Build abrufen
+        shell: bash
+        run: |
+          gh run download 42471335123 --name ep-voice-v047-signed-test --dir verified-build
+          apk=verified-build/EP_Voice_Launcher_V047_Signed_Test.apk
+          echo "9d1b628a7a2e13e37b0a150f845b59346883e6ea5c67b9bf1bccdefbba668b24  $apk" | sha256sum --check
+          gh run download 42471335123 --name ep-voice-v047-signing-evidence --dir audit
+          zip -q -r EP_Voice_Launcher_V047_Pruefprotokolle.zip audit
+      - name: APK und Prüfprotokolle als Testversion bereitstellen
+        shell: bash
+        run: |
+          gh release create v0.4.7-signed-test verified-build/EP_Voice_Launcher_V047_Signed_Test.apk EP_Voice_Launcher_V047_Pruefprotokolle.zip \
+            --target be64fcd2a51dcc4f9b3e5e53d5ba565c047c4f09 \
+            --prerelease --latest=false --title "EP Voice Launcher V0.4.7 Signaturtest" \
+            --notes "Test-APK aus geprüftem Android-Build 42471335123. Mit einem einmaligen Testschlüssel signiert. Play-Protect-Entscheidung am Samsung steht aus."
