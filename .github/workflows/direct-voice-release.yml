@@ -2,7 +2,7 @@ name: EP Voice direct voice APK release
 on:
   push:
     branches:
-      - dev/v0.4.7-direct-voice-test
+      - dev/v0.4.8-voice-diagnostics
   workflow_dispatch:
 permissions:
   contents: write
@@ -31,15 +31,15 @@ jobs:
           python3 scripts/download_and_verify_models.py --apk app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release
-          cp app/build/outputs/apk/debug/app-debug.apk release/EP_Voice_V047_Direct_Voice_Test.apk
-          (cd release && sha256sum EP_Voice_V047_Direct_Voice_Test.apk > SHA256SUMS.txt)
+          cp app/build/outputs/apk/debug/app-debug.apk release/EP_Voice_V048_Voice_Diagnostics.apk
+          (cd release && sha256sum EP_Voice_V048_Voice_Diagnostics.apk > SHA256SUMS.txt)
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ep-voice-direct-voice-test
+          name: ep-voice-v048-diagnostics
           path: release/
       - name: Publish direct APK download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.4.7-direct-voice-test release/EP_Voice_V047_Direct_Voice_Test.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "EP Voice V0.4.7 direct voice test" --notes "Diagnostic test APK. No accessibility service. Direct ChatGPT voice component with voice deeplink fallback. Signed with ephemeral Android debug key; not a production release. Keep V0.4.6 installed. Play Protect and device tests still required." --prerelease
+          gh release create v0.4.8-voice-diagnostics release/EP_Voice_V048_Voice_Diagnostics.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "EP Voice V0.4.8 voice diagnostics" --notes "Diagnostic test APK. No accessibility service. Direct ChatGPT voice component with voice deeplink fallback. Signed with ephemeral Android debug key; not a production release. Keep V0.4.6 installed. Play Protect and device tests still required." --prerelease
