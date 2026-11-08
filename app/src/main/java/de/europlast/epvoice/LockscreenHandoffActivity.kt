@@ -1,6 +1,8 @@
 package de.europlast.epvoice
 
 import android.app.Activity
+import android.app.KeyguardManager
+import android.os.PowerManager
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -20,6 +22,11 @@ class LockscreenHandoffActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
+        val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        val interactive = getSystemService(PowerManager::class.java).isInteractive
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit()
+            .putString("lockscreen_lifecycle", "onResume; keyguard=$locked; interactive=$interactive")
+            .apply()
         handler.postDelayed({
             if (dispatched || isFinishing) return@postDelayed
             dispatched = true
@@ -35,6 +42,12 @@ class LockscreenHandoffActivity : Activity() {
             }
             finish()
         }, 250)
+    }
+    override fun onPause() {
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit()
+            .putString("lockscreen_last_pause", "onPause; dispatched=$dispatched")
+            .apply()
+        super.onPause()
     }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
