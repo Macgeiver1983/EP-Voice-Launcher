@@ -42,6 +42,18 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     private var launchIntent: Intent? = null
     private var deadline = 0L
     private var sawChatGpt = false
+    private var conversationSeen = false
+    private val resumeDetector = Runnable {
+        if (conversationSeen && rootInActiveWindow?.packageName?.toString() != CHATGPT_PACKAGE) {
+            conversationSeen = false
+            try {
+                startService(Intent(this, WakeService::class.java).setAction("RESUME"))
+                record("Automatische Wiederaufnahme nach ChatGPT angefordert.")
+            } catch (e: RuntimeException) {
+                record("Wiederaufnahme fehlgeschlagen: ${e.javaClass.simpleName}")
+            }
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -49,7 +61,15 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // The time-limited request drives scans. Events alone never initiate an action.
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString()
+        if (pkg == CHATGPT_PACKAGE) {
+            conversationSeen = true
+            handler.removeCallbacks(resumeDetector)
+        } else if (conversationSeen && pkg != packageName) {
+            handler.removeCallbacks(resumeDetector)
+            handler.postDelayed(resumeDetector, 5_000L)
+        }
     }
 
     override fun onInterrupt() {
@@ -69,6 +89,7 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     private fun disconnect() {
         if (connected.get() === this) connected.clear()
         onInterrupt()
+        handler.removeCallbacks(resumeDetector)
     }
 
     private fun canUseScreen(): Boolean =
@@ -78,8 +99,7 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     private fun begin(releaseMicrophone: () -> Unit): Boolean {
         if (launchIntent != null) return true
         if (!canUseScreen()) {
-            record("Automatischer Sprachstart braucht einen entsperrten, eingeschalteten Bildschirm.")
-            return false
+            record("Sperrbildschirm aktiv: Startversuch wird protokolliert; Android kann ihn blockieren.")
         }
         val intent = packageManager.getLaunchIntentForPackage(CHATGPT_PACKAGE)
         if (intent == null) {
@@ -96,10 +116,7 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
 
     private fun openApp() {
         val intent = launchIntent ?: return
-        if (!canUseScreen()) {
-            finishRequest("Sprachstart abgebrochen – Bildschirm gesperrt oder aus.")
-            return
-        }
+        if (!canUseScreen()) record("Startversuch bei gesperrtem Bildschirm; keine Entsperrung.")
         try {
             startActivity(intent)
             deadline = SystemClock.elapsedRealtime() + TIMEOUT_MS
@@ -115,7 +132,7 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     private fun scan() {
         if (launchIntent == null) return
         if (!canUseScreen()) {
-            finishRequest("Sprachstart abgebrochen – Bildschirm gesperrt oder aus.")
+            finishRequest("ChatGPT-Sprachknopf am Sperrbildschirm nicht sicher bedienbar; Start nicht bestätigt.")
             return
         }
         if (SystemClock.elapsedRealtime() >= deadline) {

@@ -24,7 +24,8 @@ class WakeService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (detector != null) return START_NOT_STICKY
+        if (detector != null) return START_STICKY
+        if (intent?.action == "RESUME") debug("handoff", "Automatische Wiederaufnahme angefordert")
         failed = false
         handedOff = false
         debug("engine", "Initialisierung läuft")
@@ -110,7 +111,7 @@ class WakeService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
     private fun showLaunchNotification(wakeWord: String) {
         if (packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE) == null) {
@@ -133,9 +134,13 @@ class WakeService : Service() {
         handedOff = true
         releaseDetector()
         debug("engine", "Mikrofon freigegeben")
-        status("Erkennung pausiert – zum Fortsetzen STARTEN")
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        status("Erkennung pausiert – wartet auf Ende des ChatGPT-Gesprächs")
+        // Keep the already-running foreground service alive so Android does not need
+        // to authorize a fresh background microphone foreground-service launch.
+        getSystemService(NotificationManager::class.java).notify(1001,
+            Notification.Builder(this, channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setContentTitle("EP Voice – Erkennung pausiert")
+                .setContentText("Wird nach ChatGPT automatisch fortgesetzt").setOngoing(true).build())
     }
 
     private fun releaseDetector() {
