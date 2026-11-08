@@ -141,7 +141,15 @@ jobs:
           "$tools/apksigner" verify --verbose --Werr --min-sdk-version 36 --max-sdk-version 36 "$apk" | tee evidence/qa-signature-api36.txt
           analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           "$analyzer" manifest print "$apk" > evidence/qa-manifest.xml
-          "$analyzer" resources xml --file /res/xml/chatgpt_voice_accessibility.xml "$apk" > evidence/qa-accessibility.xml
+          # Release packaging can shorten resource paths. Read the actual APK resource table.
+          "$tools/aapt2" dump resources "$apk" > "$RUNNER_TEMP/qa-resources.txt"
+          accessibility_xml="$(awk '
+            /^[[:space:]]*resource .* xml\/chatgpt_voice_accessibility([[:space:]]|$)/ { selected=1; next }
+            selected && /^[[:space:]]*resource / { exit }
+            selected && match($0, /res\/[^[:space:]]+\.xml/) { print substr($0, RSTART, RLENGTH); exit }
+          ' "$RUNNER_TEMP/qa-resources.txt")"
+          test -n "$accessibility_xml"
+          "$analyzer" resources xml --file "/$accessibility_xml" "$apk" > evidence/qa-accessibility.xml
           python3 scripts/verify_v047_test_manifest.py evidence/qa-manifest.xml evidence/qa-accessibility.xml
           python3 scripts/download_and_verify_models.py --apk "$apk" | tee evidence/qa-models.txt
           sha256sum "$apk" | tee evidence/qa-apk-sha256.txt
