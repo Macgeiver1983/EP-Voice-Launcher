@@ -17,7 +17,7 @@ import java.lang.ref.WeakReference;
 
 public class MainActivity extends Activity {
     private static WeakReference<MainActivity> resumedActivity = new WeakReference<>(null);
-    private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState, accessibilityState;
+    private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState, accessibilityState, voiceTrace;
     private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -31,8 +31,8 @@ public class MainActivity extends Activity {
                     + " Treffer | Score " + prefs.getString("score_ep", "–")
                     + "\nHey EP seit Start: Spitze " + prefs.getString("peak_ep", "–")
                     + " | Bestätigung " + prefs.getString("frames_ep", "–") + " von 4");
-            accessibilityState.setText(ChatGptVoiceAccessibilityService.isConnected()
-                    ? "Bedienungshilfe verbunden" : "Bedienungshilfe nicht aktiv");
+            accessibilityState.setText("Sprachstart ohne Bedienungshilfe");
+            voiceTrace.setText("Diagnoseprotokoll:\\n" + prefs.getString("voice_trace", "(noch kein Test)"));
             voiceState.setText("ChatGPT: " + prefs.getString("handoff", "Noch nicht getestet"));
             String modelError = prefs.getString("model_error", "");
             errorState.setText("Fehler: " + prefs.getString("error", "Keine")
@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
-        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.7 Voice-Test"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
+        TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.8 Diagnose"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
         TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nEinrichtung: Bedienungshilfe öffnen → Installierte Apps → EP Voice – ChatGPT-Sprachstart → einschalten. Die Hilfe prüft bei einem Startauftrag kurz die sichtbaren Bedienelemente in ChatGPT.\n\nBei entsperrtem, eingeschaltetem Bildschirm versucht EP Voice nach dem Aktivierungswort einmal den Sprachknopf zu betätigen. Beim Wechsel zu ChatGPT pausiert die Erkennung. Danach kannst du sie mit STARTEN fortsetzen."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
@@ -57,14 +57,13 @@ public class MainActivity extends Activity {
         errorState = new TextView(this); errorState.setTextSize(16); root.addView(errorState);
         voiceState = new TextView(this); voiceState.setTextSize(16); root.addView(voiceState);
         accessibilityState = new TextView(this); accessibilityState.setTextSize(16); root.addView(accessibilityState);
-        Button setup = new Button(this); setup.setText("Bedienungshilfe öffnen"); root.addView(setup);
-        setup.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle(R.string.voice_accessibility_label)
-                .setMessage(R.string.voice_accessibility_description)
-                .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton("Zu Android-Einstellungen",
-                        (dialog, which) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
-                .show());
+        voiceTrace = new TextView(this); voiceTrace.setTextSize(15); voiceTrace.setTextIsSelectable(true); root.addView(voiceTrace);
+        Button setup = new Button(this); setup.setText("Diagnose kopieren"); root.addView(setup);
+        setup.setOnClickListener(v -> {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("EP Voice Diagnose", getSharedPreferences("ep_debug", MODE_PRIVATE).getString("voice_trace", "")));
+            status.setText("Diagnose in Zwischenablage kopiert");
+        });
         Button start = new Button(this); start.setText("Spracherkennung STARTEN"); root.addView(start);
         Button stop = new Button(this); stop.setText("Spracherkennung STOPPEN"); root.addView(stop);
         Button open = new Button(this); open.setText("ChatGPT-Sprachstart testen"); root.addView(open);
