@@ -1,0 +1,45 @@
+name: EP Voice direct voice APK release
+on:
+  push:
+    branches:
+      - dev/v0.4.7-direct-voice-test
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;34.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Check wakeword assets
+        run: python3 scripts/check_v043.py --skip-audio
+      - name: Build test APK
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Verify models and APK signing
+        run: |
+          python3 scripts/download_and_verify_models.py --apk app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p release
+          cp app/build/outputs/apk/debug/app-debug.apk release/EP_Voice_V047_Direct_Voice_Test.apk
+          (cd release && sha256sum EP_Voice_V047_Direct_Voice_Test.apk > SHA256SUMS.txt)
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ep-voice-direct-voice-test
+          path: release/
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.4.7-direct-voice-test release/EP_Voice_V047_Direct_Voice_Test.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "EP Voice V0.4.7 direct voice test" --notes "Diagnostic test APK. No accessibility service. Direct ChatGPT voice component with voice deeplink fallback. Signed with ephemeral Android debug key; not a production release. Keep V0.4.6 installed. Play Protect and device tests still required." --prerelease
