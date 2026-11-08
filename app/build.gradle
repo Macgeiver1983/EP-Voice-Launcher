@@ -2,7 +2,7 @@ plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'de.europlast.epvoice'
     compileSdk 35
-    defaultConfig { applicationId 'de.europlast.epvoice'; minSdk 29; targetSdk 35; versionCode 19; versionName '0.5.3-assistant-install-diagnostic'; manifestPlaceholders = [launcherLabel: 'EP Voice Launcher'] }
+    defaultConfig { applicationId 'de.europlast.epvoice'; minSdk 29; targetSdk 35; versionCode 20; versionName '0.5.4-minimal-permissions-diagnostic'; manifestPlaceholders = [launcherLabel: 'EP Voice Launcher'] }
     buildTypes {
         qa {
             initWith release
@@ -12,8 +12,8 @@ android {
             manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Signaturtest']
         }
         debug {
-            applicationIdSuffix '.v053assisttest'
-            manifestPlaceholders = [launcherLabel: 'EP Voice V053 Assistententest']
+            applicationIdSuffix '.v054minimaltest'
+            manifestPlaceholders = [launcherLabel: 'EP Voice V054 Berechtigungstest']
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
