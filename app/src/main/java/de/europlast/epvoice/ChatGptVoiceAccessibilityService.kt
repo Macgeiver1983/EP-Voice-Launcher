@@ -59,7 +59,7 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
         }
         if (packageName == CHATGPT_PACKAGE) {
             observedChatGptSession = true
-        } else if (observedChatGptSession && packageName != this.packageName) {
+        } else if (observedChatGptSession && packageName != "com.android.systemui") {
             observedChatGptSession = false
             prefs.edit().putBoolean("awaiting_chatgpt", false).apply()
             try {
