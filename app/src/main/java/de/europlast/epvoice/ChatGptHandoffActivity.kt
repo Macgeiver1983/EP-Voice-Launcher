@@ -6,87 +6,94 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.widget.Toast
 
-/** Releases the microphone before starting the requested ChatGPT activity. */
+/** Hands microphone to ChatGPT, then tries a direct voice activity and a scoped voice link. */
 class ChatGptHandoffActivity : Activity() {
-    private var launchIntent: Intent? = null
     private var bound = false
     private var resumed = false
     private val handler = Handler(Looper.getMainLooper())
-    private val launchAfterRelease = Runnable {
-        val launch = launchIntent
-        if (launch != null && resumed && !isFinishing) launchChatGpt(launch)
-    }
+    private val startVoice = Runnable { if (resumed && !isFinishing) launchVoice() }
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            if (launchIntent == null || !resumed || isFinishing) return
-            val binder = service as WakeService.HandoffBinder
-            if (ChatGptVoiceAccessibilityService.requestVoiceStart { binder.releaseMicrophone() }) {
-                finish()
-            } else {
-                binder.releaseMicrophone()
-                handler.postDelayed(launchAfterRelease, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
-            }
+            if (!resumed || isFinishing) return
+            (service as WakeService.HandoffBinder).releaseMicrophone()
+            handler.postDelayed(startVoice, 400L)
         }
-
         override fun onServiceDisconnected(name: ComponentName) {
-            showFailure("Mikrofonübergabe unterbrochen. Bitte erneut versuchen.")
+            if (!isFinishing) showFailure("Mikrofonübergabe unterbrochen.")
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        launchIntent = packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE)
-        if (launchIntent == null) showFailure("ChatGPT-App nicht gefunden.")
+        if (packageManager.getLaunchIntentForPackage("com.openai.chatgpt") == null)
+            showFailure("ChatGPT-App nicht gefunden.")
     }
 
     override fun onResume() {
         super.onResume()
         resumed = true
-        if (launchIntent == null || isFinishing) return
-        // Binding alone creates no audio capture, even with the recognizer stopped.
+        if (isFinishing) return
         bound = bindService(Intent(this, WakeService::class.java), connection, Context.BIND_AUTO_CREATE)
-        if (!bound) showFailure("Mikrofonübergabe fehlgeschlagen. Bitte erneut versuchen.")
+        if (!bound) showFailure("Mikrofonübergabe fehlgeschlagen.")
     }
 
     override fun onPause() {
         resumed = false
-        handler.removeCallbacks(launchAfterRelease)
-        if (bound) {
-            unbindService(connection)
-            bound = false
-        }
-        if (!isFinishing) {
-            recordHandoff("Übergabe unterbrochen")
-            finish()
-        }
+        handler.removeCallbacks(startVoice)
+        if (bound) { unbindService(connection); bound = false }
+        if (!isFinishing) finish()
         super.onPause()
     }
 
-    private fun launchChatGpt(launch: Intent) {
+    private fun launchVoice() {
+        val component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
         try {
-            startActivity(launch)
-            recordHandoff("ChatGPT-App geöffnet – Bedienungshilfe nicht verwendet")
+            val info = packageManager.getActivityInfo(component, 0)
+            if (info.exported && info.permission == null) {
+                startActivity(Intent().setComponent(component))
+                record("Direkter ChatGPT-Sprachstart angefordert")
+                finish()
+                return
+            }
+        } catch (_: Exception) {
+            record("Direkter Sprachstart nicht verfügbar; prüfe Sprachlink")
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chat.com/?mode=voice"))
+                .setPackage("com.openai.chatgpt"))
+            record("ChatGPT-Sprachlink angefordert")
             finish()
         } catch (_: ActivityNotFoundException) {
-            showFailure("Das angeforderte ChatGPT-Ziel ist nicht verfügbar.")
+            fallback()
         } catch (_: SecurityException) {
-            showFailure("Android hat das Öffnen des ChatGPT-Ziels blockiert.")
+            fallback()
         }
     }
 
-    private fun recordHandoff(message: String) {
-        getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("handoff", message).apply()
+    private fun fallback() {
+        val intent = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
+        if (intent == null) { showFailure("ChatGPT nicht verfügbar."); return }
+        try {
+            startActivity(intent)
+            record("Nur ChatGPT geöffnet – Sprachstart nicht bestätigt")
+            finish()
+        } catch (_: Exception) {
+            showFailure("ChatGPT konnte nicht gestartet werden.")
+        }
     }
 
+    private fun record(message: String) {
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("handoff", message).apply()
+    }
     private fun showFailure(message: String) {
-        recordHandoff(message)
-        getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("state", "ChatGPT-Start fehlgeschlagen").apply()
+        record(message)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         finish()
     }
