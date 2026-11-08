@@ -64,6 +64,13 @@ public class MainActivity extends Activity {
             cm.setPrimaryClip(android.content.ClipData.newPlainText("EP Voice Diagnose", getSharedPreferences("ep_debug", MODE_PRIVATE).getString("voice_trace", "")));
             status.setText("Diagnose in Zwischenablage kopiert");
         });
+        Button overlay = new Button(this); overlay.setText("Hintergrundstart-Berechtigung prüfen"); root.addView(overlay);
+        overlay.setOnClickListener(v -> {
+            if (Settings.canDrawOverlays(this)) { status.setText("Einblenden über andere Apps erlaubt"); return; }
+            Intent settings = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:" + getPackageName()));
+            startActivity(settings);
+        });
         Button start = new Button(this); start.setText("Spracherkennung STARTEN"); root.addView(start);
         Button stop = new Button(this); stop.setText("Spracherkennung STOPPEN"); root.addView(stop);
         Button open = new Button(this); open.setText("ChatGPT-Sprachstart testen"); root.addView(open);
