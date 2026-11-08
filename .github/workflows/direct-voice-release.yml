@@ -1,8 +1,10 @@
-name: EP Voice direct voice APK release
+name: EP Voice V0.5.0 direct APK prerelease
 on:
   push:
     branches:
-      - dev/v0.4.9-background-handoff
+      - dev/v0.5.0-lockscreen-handoff
+    paths:
+      - .github/workflows/direct-voice-release.yml
   workflow_dispatch:
 permissions:
   contents: write
@@ -26,20 +28,15 @@ jobs:
         run: python3 scripts/check_v043.py --skip-audio
       - name: Build test APK
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug
-      - name: Verify models and APK signing
+      - name: Verify APK and create checksum
         run: |
           python3 scripts/download_and_verify_models.py --apk app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release
-          cp app/build/outputs/apk/debug/app-debug.apk release/EP_Voice_V049_Standby_Test.apk
-          (cd release && sha256sum EP_Voice_V049_Standby_Test.apk > SHA256SUMS.txt)
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ep-voice-v049-standby
-          path: release/
-      - name: Publish direct APK download
+          cp app/build/outputs/apk/debug/app-debug.apk release/EP_Voice_V050_Lockscreen_Test.apk
+          (cd release && sha256sum EP_Voice_V050_Lockscreen_Test.apk > SHA256SUMS.txt)
+      - name: Publish direct APK prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.4.9-background-handoff release/EP_Voice_V049_Standby_Test.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "EP Voice V0.4.9 standby test" --notes "Diagnostic test APK. No accessibility service. Direct ChatGPT voice component with voice deeplink fallback. Signed with ephemeral Android debug key; not a production release. Keep V0.4.6 installed. Play Protect and device tests still required." --prerelease
+          gh release create v0.5.0-lockscreen-test release/EP_Voice_V050_Lockscreen_Test.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "EP Voice V0.5.0 lockscreen test" --notes "Experimental debug-signed APK. Samsung lockscreen operation and Play Protect compatibility NOT verified. Do not bypass security warnings. V0.4.9 can remain installed." --prerelease
