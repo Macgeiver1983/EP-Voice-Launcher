@@ -1,6 +1,7 @@
 package de.europlast.epvoice
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
@@ -17,6 +18,7 @@ class ChatGptHandoffActivity : Activity() {
     private var launchIntent: Intent? = null
     private var bound = false
     private var resumed = false
+    private var handoffStarted = false
     private val handler = Handler(Looper.getMainLooper())
     private val launchAfterRelease = Runnable {
         val launch = launchIntent
@@ -41,6 +43,8 @@ class ChatGptHandoffActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
         launchIntent = packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE)
         if (launchIntent == null) showFailure("ChatGPT-App nicht gefunden.")
     }
@@ -48,8 +52,33 @@ class ChatGptHandoffActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed = true
-        if (launchIntent == null || isFinishing) return
-        // Binding alone creates no audio capture, even with the recognizer stopped.
+        if (launchIntent == null || isFinishing || handoffStarted) return
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        recordHandoff("Sperrbildschirm-Test: gesperrt=" + keyguard.isKeyguardLocked)
+        if (keyguard.isKeyguardLocked) {
+            keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() {
+                    recordHandoff("Sperrbildschirm automatisch geschlossen")
+                    startHandoff()
+                }
+                override fun onDismissCancelled() {
+                    recordHandoff("Sperrbildschirm-Schließen abgebrochen")
+                    finish()
+                }
+                override fun onDismissError() {
+                    recordHandoff("Sperrbildschirm-Schließen von Android abgelehnt")
+                    finish()
+                }
+            })
+        } else {
+            startHandoff()
+        }
+    }
+
+    private fun startHandoff() {
+        if (!resumed || isFinishing || handoffStarted) return
+        handoffStarted = true
+        // Erst nach bestätigtem Dismissal an ChatGPT übergeben.
         bound = bindService(Intent(this, WakeService::class.java), connection, Context.BIND_AUTO_CREATE)
         if (!bound) showFailure("Mikrofonübergabe fehlgeschlagen. Bitte erneut versuchen.")
     }
