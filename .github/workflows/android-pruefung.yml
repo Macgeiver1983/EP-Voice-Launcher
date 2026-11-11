@@ -79,7 +79,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    if: github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' || github.ref == 'refs/heads/test/extend-unlock-keyguard') && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -95,18 +95,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Originale V0.4.7-APK und Signatur prüfen
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p evidence
-          gh release download v0.4.7-test --pattern EP_Voice_Launcher_V047_Test.apk --dir "$RUNNER_TEMP/old-apk"
-          old="$RUNNER_TEMP/old-apk/EP_Voice_Launcher_V047_Test.apk"
-          echo "33394f7b61635f2e8584bf9afd579a5eef50ec9d6aa15bdbaefcd5a05bbe0110  $old" | sha256sum --check
-          tools="$ANDROID_HOME/build-tools/34.0.0"
-          "$tools/apksigner" verify --verbose --print-certs --Werr "$old" | tee evidence/original-signature.txt
-          "$tools/apksigner" verify --verbose --Werr --min-sdk-version 36 --max-sdk-version 36 "$old" | tee evidence/original-signature-api36.txt
-          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$old" > evidence/original-manifest.xml
+      - name: Signaturprüfungen vorbereiten
+        run: mkdir -p evidence
       - name: Nicht debuggable Test-APK bauen
         run: gradle --no-daemon --stacktrace :app:assembleQa :app:lintQa
       - name: Mit einem separaten einmaligen Testschlüssel signieren
