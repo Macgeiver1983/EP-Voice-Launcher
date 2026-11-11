@@ -2,7 +2,7 @@ name: EP Voice – Modellprüfung und Android-Build
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'dev/**', 'test/extend-unlock-keyguard']
+    branches: [main, 'dev/**', 'test/extend-unlock-keyguard', 'test/play-protect-no-accessibility']
   pull_request:
 permissions:
   contents: read
@@ -79,7 +79,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    if: (github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' || github.ref == 'refs/heads/test/extend-unlock-keyguard') && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' || github.ref == 'refs/heads/test/extend-unlock-keyguard' || github.ref == 'refs/heads/test/play-protect-no-accessibility') && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -131,16 +131,30 @@ jobs:
           "$tools/apksigner" verify --verbose --Werr --min-sdk-version 36 --max-sdk-version 36 "$apk" | tee evidence/qa-signature-api36.txt
           analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           "$analyzer" manifest print "$apk" > evidence/qa-manifest.xml
-          # Release packaging can shorten resource paths. Read the actual APK resource table.
-          "$tools/aapt2" dump resources "$apk" > "$RUNNER_TEMP/qa-resources.txt"
-          accessibility_xml="$(awk '
-            /^[[:space:]]*resource .* xml\/chatgpt_voice_accessibility([[:space:]]|$)/ { selected=1; next }
-            selected && /^[[:space:]]*resource / { exit }
-            selected && match($0, /res\/[^[:space:]]+\.xml/) { print substr($0, RSTART, RLENGTH); exit }
-          ' "$RUNNER_TEMP/qa-resources.txt")"
-          test -n "$accessibility_xml"
-          "$analyzer" resources xml --file "/$accessibility_xml" "$apk" > evidence/qa-accessibility.xml
-          python3 scripts/verify_v047_test_manifest.py evidence/qa-manifest.xml evidence/qa-accessibility.xml
+          if [[ "$GITHUB_REF" == "refs/heads/test/play-protect-no-accessibility" ]]; then
+            python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("evidence/qa-manifest.xml").getroot()
+          a = "{http://schemas.android.com/apk/res/android}"
+          app = root.find("application")
+          services = [x.get(a+"name","") for x in app.findall("service")]
+          assert "de.europlast.epvoice.ChatGptVoiceAccessibilityService" not in services, services
+          assert "de.europlast.epvoice.WakeService" in services, services
+          assert app.get(a+"debuggable") in (None, "false")
+          print("PASS: non-debuggable QA APK, wake service present, accessibility service absent")
+          PY
+          else
+            # Release packaging can shorten resource paths. Read the actual APK resource table.
+            "$tools/aapt2" dump resources "$apk" > "$RUNNER_TEMP/qa-resources.txt"
+            accessibility_xml="$(awk '
+              /^[[:space:]]*resource .* xml\/chatgpt_voice_accessibility([[:space:]]|$)/ { selected=1; next }
+              selected && /^[[:space:]]*resource / { exit }
+              selected && match($0, /res\/[^[:space:]]+\.xml/) { print substr($0, RSTART, RLENGTH); exit }
+            ' "$RUNNER_TEMP/qa-resources.txt")"
+            test -n "$accessibility_xml"
+            "$analyzer" resources xml --file "/$accessibility_xml" "$apk" > evidence/qa-accessibility.xml
+            python3 scripts/verify_v047_test_manifest.py evidence/qa-manifest.xml evidence/qa-accessibility.xml
+          fi
           python3 scripts/download_and_verify_models.py --apk "$apk" | tee evidence/qa-models.txt
           sha256sum "$apk" | tee evidence/qa-apk-sha256.txt
       - name: Prüfprotokolle bereitstellen
