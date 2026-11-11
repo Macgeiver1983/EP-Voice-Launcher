@@ -2,7 +2,7 @@ name: EP Voice – Modellprüfung und Android-Build
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'dev/**']
+    branches: [main, 'dev/**', 'test/extend-unlock-keyguard']
   pull_request:
 permissions:
   contents: read
