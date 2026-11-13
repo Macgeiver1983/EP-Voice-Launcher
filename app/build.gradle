@@ -6,10 +6,10 @@ android {
     buildTypes {
         qa {
             initWith release
-            applicationIdSuffix '.v047test'
-            versionNameSuffix '-signed'
+            applicationIdSuffix '.assistantdiag'
+            versionNameSuffix '-assistant-diag'
             debuggable false
-            manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Signaturtest']
+            manifestPlaceholders = [launcherLabel: 'EP Voice Assistant Diagnose']
         }
         debug {
             applicationIdSuffix '.v047test'
