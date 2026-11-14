@@ -5,5 +5,10 @@
         <service
             android:name=".ChatGptVoiceAccessibilityService"
             tools:node="remove" />
+        <service
+            android:name=".WakeService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"
+            tools:node="merge" />
     </application>
 </manifest>
