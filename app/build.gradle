@@ -11,6 +11,12 @@ android {
             debuggable false
             manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Signaturtest']
         }
+        diagnostic {
+            initWith qa
+            applicationIdSuffix '.diagnostic'
+            versionNameSuffix '-diagnostic'
+            manifestPlaceholders = [launcherLabel: 'EP Voice Diagnose ohne Bedienungshilfe']
+        }
         debug {
             applicationIdSuffix '.v047test'
             manifestPlaceholders = [launcherLabel: 'EP Voice 0.4.7 Voice-Test']
