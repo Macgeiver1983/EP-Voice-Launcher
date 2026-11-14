@@ -17,7 +17,7 @@ import java.lang.ref.WeakReference;
 
 public class MainActivity extends Activity {
     private static WeakReference<MainActivity> resumedActivity = new WeakReference<>(null);
-    private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState, accessibilityState;
+    private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState, accessibilityState, screenDiagnostic, audioConfigs;
     private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -34,6 +34,8 @@ public class MainActivity extends Activity {
             accessibilityState.setText(ChatGptVoiceAccessibilityService.isConnected()
                     ? "Bedienungshilfe verbunden" : "Bedienungshilfe nicht aktiv");
             voiceState.setText("ChatGPT: " + prefs.getString("handoff", "Noch nicht getestet"));
+            screenDiagnostic.setText("Sperrbildschirm-Diagnose: " + prefs.getString("screen_diagnostic", "Noch kein Messwert"));
+            audioConfigs.setText("Android-Aufnahmen: " + prefs.getString("audio_configs", "Noch kein Messwert"));
             String modelError = prefs.getString("model_error", "");
             errorState.setText("Fehler: " + prefs.getString("error", "Keine")
                     + (modelError.isEmpty() ? "" : "\n" + modelError));
@@ -57,6 +59,8 @@ public class MainActivity extends Activity {
         errorState = new TextView(this); errorState.setTextSize(16); root.addView(errorState);
         voiceState = new TextView(this); voiceState.setTextSize(16); root.addView(voiceState);
         accessibilityState = new TextView(this); accessibilityState.setTextSize(16); root.addView(accessibilityState);
+        screenDiagnostic = new TextView(this); screenDiagnostic.setTextSize(16); screenDiagnostic.setPadding(0,20,0,10); root.addView(screenDiagnostic);
+        audioConfigs = new TextView(this); audioConfigs.setTextSize(16); root.addView(audioConfigs);
         Button setup = new Button(this); setup.setText("Bedienungshilfe öffnen"); root.addView(setup);
         setup.setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setTitle(R.string.voice_accessibility_label)
