@@ -3,6 +3,8 @@ package de.europlast.epvoice
 import android.app.*
 import android.content.*
 import android.os.*
+import android.media.AudioManager
+import android.content.pm.PackageManager
 import com.openwakeword.OpenWakeWord
 
 /** Development integration. Requires device-side build and test. */
@@ -12,6 +14,30 @@ class WakeService : Service() {
     private var lastTrigger = 0L
     private var failed = false
     private var handedOff = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var awaitingVoice = false
+    private var voiceSeen = false
+    private var handoffAt = 0L
+    private var quietSince = 0L
+    private val voiceMonitor = object : Runnable {
+        override fun run() {
+            if (!awaitingVoice) return
+            val elapsed = SystemClock.elapsedRealtime() - handoffAt
+            val audio = getSystemService(AudioManager::class.java)
+            val communication = audio.mode == AudioManager.MODE_IN_COMMUNICATION || audio.mode == AudioManager.MODE_IN_CALL
+            if (communication) {
+                voiceSeen = true
+                quietSince = 0L
+                debug("handoff", "Kommunikationsmodus erkannt (kein unabhängiger Nachweis der ChatGPT-Aufnahme)")
+            } else if (voiceSeen) {
+                if (quietSince == 0L) quietSince = SystemClock.elapsedRealtime()
+                if (SystemClock.elapsedRealtime() - quietSince >= 2500L) { resumeAfterHandoff("Kommunikationsmodus beendet"); return }
+            }
+            if (!voiceSeen && elapsed >= 12000L) { resumeAfterHandoff("Sprachmodus nicht bestätigt – Timeout"); return }
+            if (elapsed >= 600000L) { resumeAfterHandoff("Überwachung nach 10 Minuten beendet"); return }
+            handler.postDelayed(this, 500L)
+        }
+    }
     private fun debug(key: String, value: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString(key, value).apply() }
     private fun status(s: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("state",s).apply() }
     override fun onCreate() {
@@ -24,7 +50,7 @@ class WakeService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (detector != null) return START_NOT_STICKY
+        if (detector != null || awaitingVoice) return START_NOT_STICKY
         failed = false
         handedOff = false
         debug("engine", "Initialisierung läuft")
@@ -89,15 +115,7 @@ class WakeService : Service() {
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
-                    if (ChatGptVoiceAccessibilityService.requestVoiceStart { releaseMicrophone() }) {
-                        getSystemService(NotificationManager::class.java).cancel(1002)
-                    } else if (MainActivity.tryOpenChatGpt()) {
-                        status("$wakeWord erkannt – ChatGPT wird geöffnet")
-                        getSystemService(NotificationManager::class.java).cancel(1002)
-                    } else {
-                        status("$wakeWord erkannt – Benachrichtigung öffnen")
-                        showLaunchNotification(wakeWord)
-                    }
+                    startVoiceHandoff(wakeWord)
                 }
             }
             debug("engine", "start() zurückgekehrt; Audiofluss nicht unabhängig bestätigt")
@@ -111,6 +129,71 @@ class WakeService : Service() {
             return START_NOT_STICKY
         }
         return START_NOT_STICKY
+    }
+    private fun startVoiceHandoff(wakeWord: String) {
+        if (awaitingVoice) return
+        awaitingVoice = true
+        voiceSeen = false
+        quietSince = 0L
+        handoffAt = SystemClock.elapsedRealtime()
+        status("$wakeWord erkannt – Mikrofonübergabe")
+        // Keep the already running microphone foreground service; stop only AudioRecord.
+        detector?.stop()
+        debug("engine", "Mikrofon pausiert; Dienst bleibt aktiv")
+        handler.postDelayed({
+            if (!awaitingVoice) return@postDelayed
+            val direct = Intent(Intent.ACTION_MAIN).apply {
+                component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val directAllowed = try {
+                val info = packageManager.getActivityInfo(direct.component!!, 0)
+                info.exported && info.permission == null
+            } catch (_: Exception) { false }
+            val attempts = mutableListOf<Intent>()
+            if (directAllowed) attempts.add(direct)
+            attempts.add(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://chat.com/?mode=voice")).apply {
+                setPackage("com.openai.chatgpt")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            var dispatched = false
+            for (intent in attempts) {
+                try {
+                    startActivity(intent)
+                    debug("handoff", if (intent.component != null) "Voice-Activity angefordert" else "Voice-Deep-Link angefordert")
+                    dispatched = true
+                    break
+                } catch (e: Exception) {
+                    debug("handoff", "Startversuch fehlgeschlagen: ${e.javaClass.simpleName}")
+                }
+            }
+            if (!dispatched) {
+                showLaunchNotification(wakeWord)
+                resumeAfterHandoff("Direkter Start blockiert – Benachrichtigung angeboten")
+            } else {
+                handler.post(voiceMonitor)
+            }
+        }, 400L)
+    }
+
+    private fun resumeAfterHandoff(reason: String) {
+        awaitingVoice = false
+        handler.removeCallbacks(voiceMonitor)
+        debug("handoff", reason)
+        try {
+            detector?.startNamed { wakeWord, score ->
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastTrigger > 5000L) {
+                    lastTrigger = now
+                    debug("phrase", "$wakeWord (Score: $score)")
+                    startVoiceHandoff(wakeWord)
+                }
+            }
+            status("Wakeword-Erkennung erneut gestartet")
+        } catch (e: Exception) {
+            debug("error", "Wiederaufnahme fehlgeschlagen: ${e.message}")
+            status("Wiederaufnahme fehlgeschlagen")
+        }
     }
     private fun showLaunchNotification(wakeWord: String) {
         if (packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE) == null) {
@@ -144,6 +227,8 @@ class WakeService : Service() {
     }
 
     override fun onDestroy() {
+        awaitingVoice = false
+        handler.removeCallbacks(voiceMonitor)
         releaseDetector()
         if (!failed && !handedOff) {
             debug("engine", "Mikrofon inaktiv")
