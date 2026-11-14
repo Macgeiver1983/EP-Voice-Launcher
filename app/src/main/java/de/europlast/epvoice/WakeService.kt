@@ -4,12 +4,44 @@ import android.app.*
 import android.content.*
 import android.os.*
 import android.media.AudioManager
+import android.media.AudioRecordingConfiguration
+import android.media.AudioManager.AudioRecordingCallback
+import android.app.KeyguardManager
+import android.os.PowerManager
 import android.content.pm.PackageManager
 import com.openwakeword.OpenWakeWord
 
 /** Development integration. Requires device-side build and test. */
 class WakeService : Service() {
     private var detector: OpenWakeWord? = null
+    private var audioFrames = 0L
+    private var lastAudioAt = 0L
+    private var lastAudioPeak = 0f
+    private var recordingCallbackRegistered = false
+    private val audioCallback = object : AudioRecordingCallback() {
+        override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
+            val own = configs.filter { it.clientAudioSessionId != 0 && it.clientAudioSource == android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION }
+            debug("audio_configs", "Aufnahmen gesamt=${configs.size}, VOICE_RECOGNITION=${own.size}, stumm=${own.count { it.isClientSilenced }}")
+            snapshot("Audio-Konfiguration geändert")
+        }
+    }
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            snapshot("Bildschirmereignis: ${intent?.action?.substringAfterLast('.')}")
+        }
+    }
+    private val diagnosticTick = object : Runnable {
+        override fun run() {
+            snapshot("Statusprüfung")
+            handler.postDelayed(this, 3000L)
+        }
+    }
+    private fun snapshot(event: String) {
+        val power = getSystemService(PowerManager::class.java)
+        val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        val age = if (lastAudioAt == 0L) "noch keine" else "${(SystemClock.elapsedRealtime() - lastAudioAt) / 1000}s"
+        debug("screen_diagnostic", "$event | interaktiv=${power.isInteractive}, gesperrt=$locked | AudioFrames=$audioFrames | letzte Audiodaten=$age | Pegel=%.3f | Übergabe=$awaitingVoice".format(lastAudioPeak))
+    }
     private val channel = "ep_voice"
     private var lastTrigger = 0L
     private var failed = false
@@ -43,6 +75,17 @@ class WakeService : Service() {
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(channel,"EP Voice Dauererkennung",NotificationManager.IMPORTANCE_LOW))
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        registerReceiver(screenReceiver, filter)
+        try {
+            getSystemService(AudioManager::class.java).registerAudioRecordingCallback(audioCallback, handler)
+            recordingCallbackRegistered = true
+        } catch (e: Exception) { debug("audio_configs", "Callback nicht verfügbar: ${e.javaClass.simpleName}") }
+        handler.post(diagnosticTick)
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
@@ -99,6 +142,9 @@ class WakeService : Service() {
                     .apply()
             }
             detector?.onAudioProgress = { frames, peak ->
+                audioFrames = frames
+                lastAudioAt = SystemClock.elapsedRealtime()
+                lastAudioPeak = peak
                 debug("engine", "Audio aktiv: $frames Blöcke; Pegel %.3f".format(peak))
             }
             debug("engine", "Modellobjekt erstellt; Audio-Start läuft")
@@ -229,6 +275,9 @@ class WakeService : Service() {
     override fun onDestroy() {
         awaitingVoice = false
         handler.removeCallbacks(voiceMonitor)
+        handler.removeCallbacks(diagnosticTick)
+        try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
+        if (recordingCallbackRegistered) getSystemService(AudioManager::class.java).unregisterAudioRecordingCallback(audioCallback)
         releaseDetector()
         if (!failed && !handedOff) {
             debug("engine", "Mikrofon inaktiv")
