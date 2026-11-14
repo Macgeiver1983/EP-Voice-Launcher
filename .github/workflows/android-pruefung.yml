@@ -175,3 +175,43 @@ jobs:
           name: ep-voice-v047-signed-test
           path: evidence/EP_Voice_Launcher_V047_Signed_Test.apk
           if-no-files-found: error
+      - name: Diagnose-APK ohne Accessibility bauen
+        run: gradle --no-daemon --stacktrace :app:assembleDiagnostic :app:lintDiagnostic
+      - name: Diagnose-Manifest kontrollieren und APK signieren
+        env:
+          EP_QA_KEYSTORE_BASE64: ${{ secrets.EP_QA_KEYSTORE_BASE64 }}
+          EP_QA_KEY_PASSWORD: ${{ secrets.EP_QA_KEY_PASSWORD }}
+          EP_QA_STORE_PASSWORD: ${{ secrets.EP_QA_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/ep-voice-diagnostic.p12"
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$EP_QA_KEYSTORE_BASE64" | base64 --decode > "$key"
+          keytool -list -keystore "$key" -storetype PKCS12 -storepass:env EP_QA_STORE_PASSWORD > "$RUNNER_TEMP/diagnostic-keystore.txt"
+          alias_name="$(awk -F, '/PrivateKeyEntry/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1; exit}' "$RUNNER_TEMP/diagnostic-keystore.txt")"
+          test -n "$alias_name"
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          unsigned=app/build/outputs/apk/diagnostic/app-diagnostic-unsigned.apk
+          "$tools/zipalign" -f -p 4 "$unsigned" "$RUNNER_TEMP/diagnostic-aligned.apk"
+          "$tools/apksigner" sign --ks "$key" --ks-type PKCS12 --ks-key-alias "$alias_name" \
+            --ks-pass env:EP_QA_STORE_PASSWORD --key-pass env:EP_QA_KEY_PASSWORD \
+            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
+            --out evidence/EP_Voice_Diagnostic_No_Accessibility.apk "$RUNNER_TEMP/diagnostic-aligned.apk"
+          "$tools/apksigner" verify --verbose --Werr evidence/EP_Voice_Diagnostic_No_Accessibility.apk
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print evidence/EP_Voice_Diagnostic_No_Accessibility.apk > evidence/diagnostic-manifest.xml
+          if grep -E 'BIND_ACCESSIBILITY_SERVICE|ChatGptVoiceAccessibilityService|android.accessibilityservice' evidence/diagnostic-manifest.xml; then
+            echo "::error::Accessibility remains in diagnostic manifest"
+            exit 1
+          fi
+          grep -F 'de.europlast.epvoice.diagnostic' evidence/diagnostic-manifest.xml
+          sha256sum evidence/EP_Voice_Diagnostic_No_Accessibility.apk > evidence/diagnostic-sha256.txt
+      - name: Diagnose-APK und Manifest bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ep-voice-diagnostic-no-accessibility
+          path: |
+            evidence/EP_Voice_Diagnostic_No_Accessibility.apk
+            evidence/diagnostic-manifest.xml
+            evidence/diagnostic-sha256.txt
+          if-no-files-found: error
