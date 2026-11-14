@@ -17,7 +17,7 @@ import java.lang.ref.WeakReference;
 
 public class MainActivity extends Activity {
     private static WeakReference<MainActivity> resumedActivity = new WeakReference<>(null);
-    private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState, accessibilityState, screenDiagnostic, audioConfigs;
+    private TextView status, recognized, recognitionState, engineState, eventCount, errorState, voiceState, accessibilityState, screenDiagnostic, audioConfigs, screenHistory;
     private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -36,6 +36,9 @@ public class MainActivity extends Activity {
             voiceState.setText("ChatGPT: " + prefs.getString("handoff", "Noch nicht getestet"));
             screenDiagnostic.setText("Sperrbildschirm-Diagnose: " + prefs.getString("screen_diagnostic", "Noch kein Messwert"));
             audioConfigs.setText("Android-Aufnahmen: " + prefs.getString("audio_configs", "Noch kein Messwert"));
+            String history = prefs.getString("screen_history", "Noch keine Aufzeichnung");
+            String[] lines = history.split("\\n");
+            screenHistory.setText("Letzte Diagnoseeinträge:\\n" + String.join("\\n", java.util.Arrays.copyOfRange(lines, Math.max(0, lines.length - 8), lines.length)));
             String modelError = prefs.getString("model_error", "");
             errorState.setText("Fehler: " + prefs.getString("error", "Keine")
                     + (modelError.isEmpty() ? "" : "\n" + modelError));
@@ -61,6 +64,14 @@ public class MainActivity extends Activity {
         accessibilityState = new TextView(this); accessibilityState.setTextSize(16); root.addView(accessibilityState);
         screenDiagnostic = new TextView(this); screenDiagnostic.setTextSize(16); screenDiagnostic.setPadding(0,20,0,10); root.addView(screenDiagnostic);
         audioConfigs = new TextView(this); audioConfigs.setTextSize(16); root.addView(audioConfigs);
+        screenHistory = new TextView(this); screenHistory.setTextSize(13); screenHistory.setPadding(0,15,0,15); root.addView(screenHistory);
+        Button copyHistory = new Button(this); copyHistory.setText("DIAGNOSEVERLAUF KOPIEREN"); root.addView(copyHistory);
+        copyHistory.setOnClickListener(v -> {
+            String history = getSharedPreferences("ep_debug", MODE_PRIVATE).getString("screen_history", "");
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("EP Voice Sperrbildschirm-Diagnose", history));
+            android.widget.Toast.makeText(this, "Diagnoseverlauf kopiert", android.widget.Toast.LENGTH_SHORT).show();
+        });
         Button setup = new Button(this); setup.setText("Bedienungshilfe öffnen"); root.addView(setup);
         setup.setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setTitle(R.string.voice_accessibility_label)
