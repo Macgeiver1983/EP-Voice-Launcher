@@ -2,7 +2,7 @@ name: EP Voice – Modellprüfung und Android-Build
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'dev/**', 'test/extend-unlock-keyguard']
+    branches: [main, 'dev/**', 'test/extend-unlock-keyguard', 'test/voice-handoff-audio-resume']
   pull_request:
 permissions:
   contents: read
@@ -79,7 +79,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    if: (github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' || github.ref == 'refs/heads/test/extend-unlock-keyguard') && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/dev/v0.4.7-accessibility-voice' || github.ref == 'refs/heads/test/extend-unlock-keyguard' || github.ref == 'refs/heads/test/voice-handoff-audio-resume') && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
