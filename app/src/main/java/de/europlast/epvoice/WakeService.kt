@@ -14,6 +14,7 @@ import com.openwakeword.OpenWakeWord
 /** Development integration. Requires device-side build and test. */
 class WakeService : Service() {
     private var detector: OpenWakeWord? = null
+    private var lastLogAt = 0L
     private var audioFrames = 0L
     private var lastAudioAt = 0L
     private var lastAudioPeak = 0f
@@ -40,7 +41,17 @@ class WakeService : Service() {
         val power = getSystemService(PowerManager::class.java)
         val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
         val age = if (lastAudioAt == 0L) "noch keine" else "${(SystemClock.elapsedRealtime() - lastAudioAt) / 1000}s"
-        debug("screen_diagnostic", "$event | interaktiv=${power.isInteractive}, gesperrt=$locked | AudioFrames=$audioFrames | letzte Audiodaten=$age | Pegel=%.3f | Übergabe=$awaitingVoice".format(lastAudioPeak))
+        val message = "$event | interaktiv=${power.isInteractive}, gesperrt=$locked | AudioFrames=$audioFrames | letzte Audiodaten=$age | Pegel=%.3f | Übergabe=$awaitingVoice".format(lastAudioPeak)
+        debug("screen_diagnostic", message)
+        val now = SystemClock.elapsedRealtime()
+        if (event != "Statusprüfung" || now - lastLogAt >= 3000L) {
+            lastLogAt = now
+            val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.GERMANY).format(java.util.Date())
+            val prefs = getSharedPreferences("ep_debug", MODE_PRIVATE)
+            val previous = prefs.getString("screen_history", "") ?: ""
+            val line = "$timestamp | $message"
+            prefs.edit().putString("screen_history", (previous.lineSequence().filter { it.isNotBlank() }.takeLast(79).toList() + line).joinToString("\\n")).apply()
+        }
     }
     private val channel = "ep_voice"
     private var lastTrigger = 0L
@@ -96,6 +107,7 @@ class WakeService : Service() {
         if (detector != null || awaitingVoice) return START_NOT_STICKY
         failed = false
         handedOff = false
+        debug("screen_history", "")
         debug("engine", "Initialisierung läuft")
         debug("events", "0")
         debug("events_jarvis", "0")
