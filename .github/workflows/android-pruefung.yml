@@ -99,21 +99,38 @@ jobs:
         run: mkdir -p evidence
       - name: Nicht debuggable Test-APK bauen
         run: gradle --no-daemon --stacktrace :app:assembleQa :app:lintQa
-      - name: Mit einem separaten einmaligen Testschlüssel signieren
+      - name: Mit dauerhaftem QA-Signaturschlüssel signieren
+        env:
+          EP_QA_KEYSTORE_BASE64: ${{ secrets.EP_QA_KEYSTORE_BASE64 }}
+          EP_QA_KEY_PASSWORD: ${{ secrets.EP_QA_KEY_PASSWORD }}
+          EP_QA_STORE_PASSWORD: ${{ secrets.EP_QA_STORE_PASSWORD }}
         run: |
+          set -euo pipefail
           umask 077
-          export EP_TEST_PASS="$(openssl rand -hex 24)"
-          printf '::add-mask::%s\n' "$EP_TEST_PASS"
+          for name in EP_QA_KEYSTORE_BASE64 EP_QA_KEY_PASSWORD EP_QA_STORE_PASSWORD; do
+            if test -z "${!name}"; then
+              echo "::error::Required GitHub Actions secret $name is missing or empty"
+              exit 1
+            fi
+          done
           key="$RUNNER_TEMP/ep-voice-qa.p12"
           trap 'rm -f "$key"' EXIT
-          keytool -genkeypair -storetype PKCS12 -keystore "$key" -alias ep-voice-qa \
-            -storepass:env EP_TEST_PASS -keypass:env EP_TEST_PASS \
-            -keyalg RSA -keysize 3072 -sigalg SHA256withRSA -validity 3650 \
-            -dname "CN=EP Voice Launcher V0.4.7 QA Test, O=EP Voice Launcher"
+          printf '%s' "$EP_QA_KEYSTORE_BASE64" | base64 --decode > "$key"
+          test -s "$key"
+          # Verify the PKCS12 store password and determine its actual alias without printing secrets.
+          keytool -list -keystore "$key" -storetype PKCS12 -storepass:env EP_QA_STORE_PASSWORD > "$RUNNER_TEMP/qa-keystore-list.txt"
+          alias_name="$(sed -n 's/^Alias name: //p' "$RUNNER_TEMP/qa-keystore-list.txt" | head -n 1)"
+          if test -z "$alias_name"; then
+            alias_name="$(awk -F, '/PrivateKeyEntry/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1; exit}' "$RUNNER_TEMP/qa-keystore-list.txt")"
+          fi
+          if test -z "$alias_name"; then
+            echo "::error::No private-key alias found in QA keystore"
+            exit 1
+          fi
           tools="$ANDROID_HOME/build-tools/34.0.0"
           "$tools/zipalign" -f -p 4 app/build/outputs/apk/qa/app-qa-unsigned.apk "$RUNNER_TEMP/ep-voice-aligned.apk"
-          "$tools/apksigner" sign --ks "$key" --ks-key-alias ep-voice-qa \
-            --ks-pass env:EP_TEST_PASS --key-pass env:EP_TEST_PASS \
+          "$tools/apksigner" sign --ks "$key" --ks-type PKCS12 --ks-key-alias "$alias_name" \
+            --ks-pass env:EP_QA_STORE_PASSWORD --key-pass env:EP_QA_KEY_PASSWORD \
             --v1-signing-enabled false --v2-signing-enabled true \
             --v3-signing-enabled true --v4-signing-enabled false \
             --out evidence/EP_Voice_Launcher_V047_Signed_Test.apk "$RUNNER_TEMP/ep-voice-aligned.apk"
