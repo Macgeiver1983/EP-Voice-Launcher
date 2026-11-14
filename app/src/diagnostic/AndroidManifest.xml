@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Diagnostic variant only: no Accessibility service or its sensitive permission. -->
+    <application>
+        <service
+            android:name=".ChatGptVoiceAccessibilityService"
+            tools:node="remove" />
+    </application>
+</manifest>
