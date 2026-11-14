@@ -50,7 +50,7 @@ class WakeService : Service() {
             val prefs = getSharedPreferences("ep_debug", MODE_PRIVATE)
             val previous = prefs.getString("screen_history", "") ?: ""
             val line = "$timestamp | $message"
-            prefs.edit().putString("screen_history", (previous.lineSequence().filter { it.isNotBlank() }.takeLast(79).toList() + line).joinToString("\\n")).apply()
+            prefs.edit().putString("screen_history", (previous.lineSequence().filter { it.isNotBlank() }.toList().takeLast(79) + line).joinToString("\n")).apply()
         }
     }
     private val channel = "ep_voice"
