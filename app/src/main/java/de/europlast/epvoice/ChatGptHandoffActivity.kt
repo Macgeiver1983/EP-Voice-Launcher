@@ -66,12 +66,34 @@ class ChatGptHandoffActivity : Activity() {
                     finish()
                 }
                 override fun onDismissError() {
-                    recordHandoff("Sperrbildschirm-Schließen von Android abgelehnt")
-                    finish()
+                    recordHandoff("Android-Dismissal abgelehnt; prüfe einmalige Wischgeste")
+                    tryTrustedSwipe()
                 }
             })
         } else {
             startHandoff()
+        }
+    }
+
+    private fun tryTrustedSwipe() {
+        if (!resumed || isFinishing) return
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (keyguard.isDeviceLocked) {
+            recordHandoff("Authentifizierung erforderlich – keine Wischgeste")
+            finish()
+            return
+        }
+        val requested = ChatGptVoiceAccessibilityService.dismissTrustedKeyguardWithSwipe { dismissed ->
+            if (!resumed || isFinishing) return@dismissTrustedKeyguardWithSwipe
+            if (dismissed) startHandoff()
+            else {
+                recordHandoff("Wischgeste hat Sperrbildschirm nicht verlassen")
+                finish()
+            }
+        }
+        if (!requested) {
+            recordHandoff("Wischgeste nicht verfügbar – Bedienungshilfe oder Display prüfen")
+            finish()
         }
     }
 
