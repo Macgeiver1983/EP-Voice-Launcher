@@ -1,6 +1,9 @@
 package de.europlast.epvoice
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.os.Build
 import android.app.KeyguardManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -22,6 +25,12 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
         private const val TIMEOUT_MS = 10_000L
         private const val MAX_NODES = 350
         private var connected = WeakReference<ChatGptVoiceAccessibilityService>(null)
+
+        /** Only swipe away a trusted, non-authenticating keyguard. Never bypass PIN/biometrics. */
+        internal fun dismissTrustedKeyguardWithSwipe(result: (Boolean) -> Unit): Boolean {
+            val service = connected.get() ?: return false
+            return service.swipeTrustedKeyguard(result)
+        }
 
         @JvmStatic
         fun isConnected(): Boolean = connected.get() != null
@@ -69,6 +78,38 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
     private fun disconnect() {
         if (connected.get() === this) connected.clear()
         onInterrupt()
+    }
+
+    private fun swipeTrustedKeyguard(result: (Boolean) -> Unit): Boolean {
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        val power = getSystemService(PowerManager::class.java)
+        if (!power.isInteractive || !keyguard.isKeyguardLocked || keyguard.isDeviceLocked) {
+            record("Wischgeste nicht erlaubt: Bildschirm aus oder Gerät authentifizierungspflichtig")
+            return false
+        }
+        val metrics = resources.displayMetrics
+        val x = metrics.widthPixels / 2f
+        val path = Path().apply {
+            moveTo(x, metrics.heightPixels * 0.82f)
+            lineTo(x, metrics.heightPixels * 0.25f)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 380)).build()
+        record("Einmalige Wischgeste auf vertrauenswürdigem Sperrbildschirm angefordert")
+        return dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                handler.postDelayed({
+                    val dismissed = !keyguard.isKeyguardLocked
+                    record(if (dismissed) "Wischgeste: Sperrbildschirm verlassen"
+                        else "Wischgeste ausgeführt, Sperrbildschirm weiterhin sichtbar")
+                    result(dismissed)
+                }, 450L)
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                record("Wischgeste vom System abgebrochen")
+                result(false)
+            }
+        }, handler)
     }
 
     private fun canUseScreen(): Boolean =
