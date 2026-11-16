@@ -4,6 +4,7 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:isAccessibilityTool="false"
     android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
     android:description="@string/voice_accessibility_description"
     android:notificationTimeout="200"
     android:packageNames="com.openai.chatgpt" />
