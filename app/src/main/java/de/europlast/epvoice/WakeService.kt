@@ -200,36 +200,17 @@ class WakeService : Service() {
         debug("engine", "Mikrofon pausiert; Dienst bleibt aktiv")
         handler.postDelayed({
             if (!awaitingVoice) return@postDelayed
-            val direct = Intent(Intent.ACTION_MAIN).apply {
-                component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val handoff = Intent(this, ChatGptHandoffActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
-            val directAllowed = try {
-                val info = packageManager.getActivityInfo(direct.component!!, 0)
-                info.exported && info.permission == null
-            } catch (_: Exception) { false }
-            val attempts = mutableListOf<Intent>()
-            if (directAllowed) attempts.add(direct)
-            attempts.add(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://chat.com/?mode=voice")).apply {
-                setPackage("com.openai.chatgpt")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-            var dispatched = false
-            for (intent in attempts) {
-                try {
-                    startActivity(intent)
-                    debug("handoff", if (intent.component != null) "Voice-Activity angefordert" else "Voice-Deep-Link angefordert")
-                    dispatched = true
-                    break
-                } catch (e: Exception) {
-                    debug("handoff", "Startversuch fehlgeschlagen: ${e.javaClass.simpleName}")
-                }
-            }
-            if (!dispatched) {
-                showLaunchNotification(wakeWord)
-                resumeAfterHandoff("Direkter Start blockiert – Benachrichtigung angeboten")
-            } else {
+            try {
+                startActivity(handoff)
+                debug("handoff", "Eigene Übergabe-Activity angefordert; Android kann Hintergrundstart blockieren")
                 handler.post(voiceMonitor)
+            } catch (e: Exception) {
+                debug("handoff", "Übergabe-Activity blockiert: ${e.javaClass.simpleName}")
+                showLaunchNotification(wakeWord)
+                resumeAfterHandoff("Automatischer Activity-Start fehlgeschlagen")
             }
         }, 400L)
     }
