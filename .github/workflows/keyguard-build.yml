@@ -1,0 +1,26 @@
+name: EP Voice keyguard build
+on:
+  push:
+    branches: [dev/keyguard-handoff-test]
+  workflow_dispatch:
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Compile diagnostic APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ep-voice-keyguard-debug
+          path: app/build/outputs/apk/debug/*.apk
