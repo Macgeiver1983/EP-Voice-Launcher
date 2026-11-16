@@ -194,44 +194,19 @@ class WakeService : Service() {
         voiceSeen = false
         quietSince = 0L
         handoffAt = SystemClock.elapsedRealtime()
-        status("$wakeWord erkannt – Mikrofonübergabe")
-        // Keep the already running microphone foreground service; stop only AudioRecord.
+        status("$wakeWord erkannt – eigene Assistentensitzung")
         detector?.stop()
-        debug("engine", "Mikrofon pausiert; Dienst bleibt aktiv")
+        debug("engine", "Audio pausiert; Android-Assistentenstart angefordert")
+        val requested = EpAssistantService.requestVoiceSession(wakeWord)
+        snapshot(if (requested) "EP-Assistentensitzung angefordert" else "EP-Assistent nicht aktiv")
+        // The session currently has no Realtime audio transport. Restore wakeword
+        // detection rather than leaving the microphone suspended indefinitely.
         handler.postDelayed({
-            if (!awaitingVoice) return@postDelayed
-            val direct = Intent(Intent.ACTION_MAIN).apply {
-                component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            val directAllowed = try {
-                val info = packageManager.getActivityInfo(direct.component!!, 0)
-                info.exported && info.permission == null
-            } catch (_: Exception) { false }
-            val attempts = mutableListOf<Intent>()
-            if (directAllowed) attempts.add(direct)
-            attempts.add(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://chat.com/?mode=voice")).apply {
-                setPackage("com.openai.chatgpt")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-            var dispatched = false
-            for (intent in attempts) {
-                try {
-                    startActivity(intent)
-                    debug("handoff", if (intent.component != null) "Voice-Activity angefordert" else "Voice-Deep-Link angefordert")
-                    dispatched = true
-                    break
-                } catch (e: Exception) {
-                    debug("handoff", "Startversuch fehlgeschlagen: ${e.javaClass.simpleName}")
-                }
-            }
-            if (!dispatched) {
-                showLaunchNotification(wakeWord)
-                resumeAfterHandoff("Direkter Start blockiert – Benachrichtigung angeboten")
-            } else {
-                handler.post(voiceMonitor)
-            }
-        }, 400L)
+            if (awaitingVoice) resumeAfterHandoff(
+                if (requested) "Assistentenoberfläche angefordert – Realtime noch nicht verbunden"
+                else "EP Voice muss als Standardassistent ausgewählt werden"
+            )
+        }, 2000L)
     }
 
     private fun resumeAfterHandoff(reason: String) {
