@@ -71,9 +71,18 @@ class ChatGptVoiceAccessibilityService : AccessibilityService() {
         onInterrupt()
     }
 
-    private fun canUseScreen(): Boolean =
-        getSystemService(PowerManager::class.java).isInteractive &&
-            !getSystemService(KeyguardManager::class.java).isKeyguardLocked
+    private fun canUseScreen(): Boolean {
+        val interactive = getSystemService(PowerManager::class.java).isInteractive
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        val showing = keyguard.isKeyguardLocked
+        val deviceLocked = keyguard.isDeviceLocked
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit()
+            .putString("keyguard_diagnostic",
+                "displayInteractive=$interactive, keyguardShowing=$showing, deviceLocked=$deviceLocked")
+            .apply()
+        // Diagnostic only: preserve existing safety behavior until device evidence is available.
+        return interactive && !showing
+    }
 
     private fun begin(releaseMicrophone: () -> Unit): Boolean {
         if (launchIntent != null) return true
