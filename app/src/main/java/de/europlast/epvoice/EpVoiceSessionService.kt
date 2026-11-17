@@ -30,7 +30,7 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
             orientation = LinearLayout.VERTICAL
             setPadding(36, 36, 36, 36)
             addView(TextView(context).apply {
-                text = "EP Voice: Android-Assistentensitzung gestartet.\\nChatGPT wurde nicht geöffnet.\\nDie Diagnose schließt automatisch nach 8 Sekunden."
+                text = "EP Voice: Android-Assistentensitzung gestartet.\nChatGPT wurde nicht geöffnet.\nDie Diagnose schließt automatisch nach 8 Sekunden."
                 textSize = 18f
             })
             addView(Button(context).apply {
