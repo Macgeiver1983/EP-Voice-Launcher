@@ -89,7 +89,10 @@ class WakeService : Service() {
                 val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
                     lastTrigger = now
-                    if (ChatGptVoiceAccessibilityService.requestVoiceStart { releaseMicrophone() }) {
+                    if (requestOwnAssistantSession(wakeWord)) {
+                        status("$wakeWord erkannt – Android-Assistentensitzung angefordert")
+                        getSystemService(NotificationManager::class.java).cancel(1002)
+                    } else if (ChatGptVoiceAccessibilityService.requestVoiceStart { releaseMicrophone() }) {
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else if (MainActivity.tryOpenChatGpt()) {
                         status("$wakeWord erkannt – ChatGPT wird geöffnet")
@@ -112,6 +115,24 @@ class WakeService : Service() {
         }
         return START_NOT_STICKY
     }
+    private fun requestOwnAssistantSession(wakeWord: String): Boolean {
+        val component = ComponentName(this, EpVoiceInteractionService::class.java)
+        if (!android.service.voice.VoiceInteractionService.isActiveService(this, component)) {
+            debug("assistant_session", "EP Voice ist nicht als Standard-Sprachassistent aktiv")
+            return false
+        }
+        return try {
+            startService(Intent(this, EpVoiceInteractionService::class.java)
+                .setAction(EpVoiceInteractionService.ACTION_WAKEWORD_SESSION)
+                .putExtra(EpVoiceInteractionService.EXTRA_WAKEWORD, wakeWord))
+            debug("assistant_session", "Sitzung angefordert: $wakeWord")
+            true
+        } catch (e: Exception) {
+            debug("assistant_session", "Start fehlgeschlagen: ${e.javaClass.simpleName}: ${e.message}")
+            false
+        }
+    }
+
     private fun showLaunchNotification(wakeWord: String) {
         if (packageManager.getLaunchIntentForPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE) == null) {
             status("ChatGPT nicht installiert oder nicht sichtbar")
