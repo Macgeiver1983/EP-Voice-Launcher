@@ -6,6 +6,8 @@ import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.view.WindowManager
 import android.util.Log
 import android.view.View
 import android.widget.Button
@@ -19,6 +21,8 @@ class EpVoiceSessionService : VoiceInteractionSessionService() {
 
 private class EpVoiceSession(context: Context) : VoiceInteractionSession(context) {
     private val handler = Handler(Looper.getMainLooper())
+    private val powerManager = context.getSystemService(PowerManager::class.java)
+    private var screenWakeLock: PowerManager.WakeLock? = null
     private val autoClose = Runnable {
         Log.i("EPVoiceDiagnostic", "Diagnostic session timed out; closing")
         finish()
@@ -42,12 +46,31 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
 
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
-        Log.i("EPVoiceDiagnostic", "Session shown, source=" + args?.getString("source", "unknown"))
+        val source = args?.getString("source", "unknown") ?: "unknown"
+        Log.i("EPVoiceDiagnostic", "Session shown, source=$source")
+        if (source == "wakeword") {
+            window.window?.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+            // Short-lived diagnostic wake request; does not unlock the device.
+            try {
+                @Suppress("DEPRECATION")
+                val flags = PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP
+                screenWakeLock = powerManager.newWakeLock(flags, "EPVoice:WakewordDisplay").apply {
+                    acquire(2_000L)
+                }
+                Log.i("EPVoiceDiagnostic", "Wakeword display wake requested")
+            } catch (e: RuntimeException) {
+                Log.e("EPVoiceDiagnostic", "Display wake request failed", e)
+            }
+        }
         handler.removeCallbacks(autoClose)
         handler.postDelayed(autoClose, 8_000L)
     }
 
     override fun onHide() {
+        releaseScreenWakeLock()
         handler.removeCallbacks(autoClose)
         super.onHide()
     }
@@ -57,7 +80,13 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
         finish()
     }
 
+    private fun releaseScreenWakeLock() {
+        screenWakeLock?.let { if (it.isHeld) it.release() }
+        screenWakeLock = null
+    }
+
     override fun onDestroy() {
+        releaseScreenWakeLock()
         handler.removeCallbacks(autoClose)
         super.onDestroy()
     }
