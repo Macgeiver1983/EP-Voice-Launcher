@@ -54,7 +54,13 @@ class ChatGptHandoffActivity : Activity() {
         resumed = true
         if (launchIntent == null || isFinishing || handoffStarted) return
         val keyguard = getSystemService(KeyguardManager::class.java)
-        recordHandoff("Sperrbildschirm-Test: gesperrt=" + keyguard.isKeyguardLocked)
+        val keyguardShowing = keyguard.isKeyguardLocked
+        val deviceLocked = keyguard.isDeviceLocked
+        getSharedPreferences("ep_debug", MODE_PRIVATE).edit()
+            .putString("keyguard_diagnostic",
+                "handoff: keyguardShowing=$keyguardShowing, deviceLocked=$deviceLocked")
+            .apply()
+        recordHandoff("Sperrbildschirm-Test: sichtbar=$keyguardShowing, Authentifizierung nötig=$deviceLocked")
         if (keyguard.isKeyguardLocked) {
             keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
                 override fun onDismissSucceeded() {
