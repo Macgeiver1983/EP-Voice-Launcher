@@ -1,7 +1,7 @@
 name: EP Voice assistant diagnostic APK
 on:
   push:
-    branches: [test/voice-interaction-service]
+    branches: [test/voice-interaction-service, fix/assistant-recognition-metadata]
   workflow_dispatch:
 jobs:
   build:
