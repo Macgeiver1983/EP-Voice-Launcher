@@ -20,6 +20,17 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build assistant diagnostic APK
         run: gradle :app:assembleDebug --stacktrace
+      - name: Verify APK signature and security-relevant manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)
+          test -n "$APK"
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:)"
+          "$BUILD_TOOLS/aapt" dump permissions "$APK"
+          "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E -A 10 'ChatGptVoiceAccessibilityService|BIND_ACCESSIBILITY_SERVICE|SYSTEM_ALERT_WINDOW' || true
       - uses: actions/upload-artifact@v4
         if: success()
         with:
