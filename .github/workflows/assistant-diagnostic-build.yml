@@ -77,3 +77,47 @@ jobs:
           name: ep-voice-ab-B-with-accessibility
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Build isolated security diagnostics (not for installation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp app/src/main/AndroidManifest.xml "$RUNNER_TEMP/original-manifest.xml"
+          mkdir -p "$RUNNER_TEMP/security-diagnostics"
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import shutil
+          import os
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          original = Path(os.environ["RUNNER_TEMP"] + "/original-manifest.xml").read_text()
+          variants = {
+              "C-no-overlay-permission": original.replace(
+                  '    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />\n', ""),
+              "D-no-voice-assistant-services": original,
+          }
+          import re
+          variants["D-no-voice-assistant-services"] = re.sub(
+              r'        <service android:name="\\.EpVoiceInteractionService".*?</service>\\s*',
+              '', original, flags=re.S)
+          variants["D-no-voice-assistant-services"] = re.sub(
+              r'        <service android:name="\\.EpVoiceSessionService"[^>]*/>\\s*',
+              '', variants["D-no-voice-assistant-services"])
+          for label, content in variants.items():
+              if content == original:
+                  raise RuntimeError(f"Diagnostic variant {label} did not change manifest")
+              manifest.write_text(content)
+              subprocess.run(["gradle", ":app:assembleDebug", "--rerun-tasks", "--stacktrace"], check=True)
+              apks = list(Path("app/build/outputs/apk/debug").glob("*.apk"))
+              if len(apks) != 1:
+                  raise RuntimeError(f"Expected one debug APK, got {apks}")
+              shutil.copy2(apks[0], Path(os.environ["RUNNER_TEMP"]) / "security-diagnostics" / (label + ".apk"))
+          manifest.write_text(original)
+          PY
+      - name: Upload isolated security diagnostic APKs
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ep-voice-security-isolation-not-for-install
+          path: ${{ runner.temp }}/security-diagnostics/*.apk
+          if-no-files-found: error
