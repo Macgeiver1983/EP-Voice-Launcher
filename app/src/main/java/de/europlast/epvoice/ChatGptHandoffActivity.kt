@@ -19,10 +19,14 @@ class ChatGptHandoffActivity : Activity() {
     private var bound = false
     private var resumed = false
     private var handoffStarted = false
+    private var launchPending = false
     private val handler = Handler(Looper.getMainLooper())
     private val launchAfterRelease = Runnable {
         val launch = launchIntent
-        if (launch != null && resumed && !isFinishing) launchChatGpt(launch)
+        if (launch != null && resumed && !isFinishing && launchPending) {
+            launchPending = false
+            launchChatGpt(launch)
+        }
     }
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
@@ -32,6 +36,7 @@ class ChatGptHandoffActivity : Activity() {
                 finish()
             } else {
                 binder.releaseMicrophone()
+                launchPending = true
                 handler.postDelayed(launchAfterRelease, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
             }
         }
@@ -52,6 +57,10 @@ class ChatGptHandoffActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        if (launchPending) {
+            handler.postDelayed(launchAfterRelease, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
+            return
+        }
         if (launchIntent == null || isFinishing || handoffStarted) return
         val keyguard = getSystemService(KeyguardManager::class.java)
         val keyguardShowing = keyguard.isKeyguardLocked
@@ -92,15 +101,17 @@ class ChatGptHandoffActivity : Activity() {
     override fun onPause() {
         resumed = false
         handler.removeCallbacks(launchAfterRelease)
+        // A temporary pause during keyguard dismissal must not abort the handoff.
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(launchAfterRelease)
         if (bound) {
             unbindService(connection)
             bound = false
         }
-        if (!isFinishing) {
-            recordHandoff("Übergabe unterbrochen")
-            finish()
-        }
-        super.onPause()
+        super.onDestroy()
     }
 
     private fun launchChatGpt(launch: Intent) {
