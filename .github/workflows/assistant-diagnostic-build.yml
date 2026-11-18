@@ -51,6 +51,7 @@ jobs:
           diff -u "$RUNNER_TEMP/baseline-permissions.txt" "$RUNNER_TEMP/current-permissions.txt" || test "$?" -eq 1
           echo "=== Accessibility registration in current APK ==="
           "$BUILD_TOOLS/aapt" dump xmltree "$CURRENT_APK" AndroidManifest.xml | grep -A 8 'ChatGptVoiceAccessibilityService' || true
+          cp "$BASELINE_APK" "$RUNNER_TEMP/baseline-no-accessibility.apk"
           echo "=== Baseline APK signature ==="
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BASELINE_APK"
           echo "=== Current APK signature ==="
@@ -59,5 +60,20 @@ jobs:
         if: success()
         with:
           name: ep-voice-assistant-diagnostic-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload A-B baseline APK (without accessibility registration)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ep-voice-ab-A-baseline-no-accessibility
+          path: ${{ runner.temp }}/baseline-no-accessibility.apk
+          if-no-files-found: error
+      - name: Upload A-B current APK (with accessibility registration)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ep-voice-ab-B-with-accessibility
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
