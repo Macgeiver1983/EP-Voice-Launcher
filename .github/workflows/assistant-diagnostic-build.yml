@@ -31,6 +31,28 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:)"
           "$BUILD_TOOLS/aapt" dump permissions "$APK"
           "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E -A 10 'ChatGptVoiceAccessibilityService|BIND_ACCESSIBILITY_SERVICE|SYSTEM_ALERT_WINDOW' || true
+      - name: Compare against last working code baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_APK=$(find app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)
+          test -n "$CURRENT_APK"
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          mkdir -p "$RUNNER_TEMP/baseline"
+          git archive f08930aae1984bbd128b9ad2552a725a0314f8b6 | tar -x -C "$RUNNER_TEMP/baseline"
+          (cd "$RUNNER_TEMP/baseline" && gradle :app:assembleDebug --stacktrace)
+          BASELINE_APK=$(find "$RUNNER_TEMP/baseline/app/build/outputs/apk/debug" -maxdepth 1 -name '*.apk' -print -quit)
+          test -n "$BASELINE_APK"
+          "$BUILD_TOOLS/aapt" dump permissions "$BASELINE_APK" | sort > "$RUNNER_TEMP/baseline-permissions.txt"
+          "$BUILD_TOOLS/aapt" dump permissions "$CURRENT_APK" | sort > "$RUNNER_TEMP/current-permissions.txt"
+          echo "=== Manifest permission differences (baseline -> current) ==="
+          diff -u "$RUNNER_TEMP/baseline-permissions.txt" "$RUNNER_TEMP/current-permissions.txt" || test "$?" -eq 1
+          echo "=== Accessibility registration in current APK ==="
+          "$BUILD_TOOLS/aapt" dump xmltree "$CURRENT_APK" AndroidManifest.xml | grep -A 8 'ChatGptVoiceAccessibilityService' || true
+          echo "=== Baseline APK signature ==="
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BASELINE_APK"
+          echo "=== Current APK signature ==="
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$CURRENT_APK"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
