@@ -98,10 +98,10 @@ jobs:
           }
           import re
           variants["D-no-voice-assistant-services"] = re.sub(
-              r'        <service android:name="\\.EpVoiceInteractionService".*?</service>\\s*',
+              r'        <service android:name="\.EpVoiceInteractionService".*?</service>\s*',
               '', original, flags=re.S)
           variants["D-no-voice-assistant-services"] = re.sub(
-              r'        <service android:name="\\.EpVoiceSessionService"[^>]*/>\\s*',
+              r'        <service android:name="\.EpVoiceSessionService"[^>]*/>\s*',
               '', variants["D-no-voice-assistant-services"])
           for label, content in variants.items():
               if content == original:
