@@ -3,6 +3,7 @@ package de.europlast.epvoice
 import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import android.content.Context
+import android.app.KeyguardManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,6 +24,8 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
     private val handler = Handler(Looper.getMainLooper())
     private val powerManager = context.getSystemService(PowerManager::class.java)
     private var screenWakeLock: PowerManager.WakeLock? = null
+    private val keyguardManager = context.getSystemService(KeyguardManager::class.java)
+    private var diagnosticText: TextView? = null
     private val autoClose = Runnable {
         Log.i("EPVoiceDiagnostic", "Diagnostic session timed out; closing")
         finish()
@@ -36,6 +39,7 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
             addView(TextView(context).apply {
                 text = "EP Voice: Android-Assistentensitzung gestartet.\nChatGPT wurde nicht geöffnet.\nDie Diagnose schließt automatisch nach 8 Sekunden."
                 textSize = 18f
+                diagnosticText = this
             })
             addView(Button(context).apply {
                 text = "Diagnose schließen"
@@ -47,7 +51,14 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
         val source = args?.getString("source", "unknown") ?: "unknown"
-        Log.i("EPVoiceDiagnostic", "Session shown, source=$source")
+        val interactive = powerManager.isInteractive
+        val keyguardShowing = keyguardManager.isKeyguardLocked
+        val deviceLocked = keyguardManager.isDeviceLocked
+        val details = "Quelle: $source\nDisplay aktiv: $interactive\nSperrbildschirm sichtbar: $keyguardShowing\nGerät gesperrt: $deviceLocked"
+        context.getSharedPreferences("ep_debug", Context.MODE_PRIVATE).edit()
+            .putString("keyguard_diagnostic", details).apply()
+        diagnosticText?.text = "EP Voice – Sperrbildschirm-Diagnose\n$details\nChatGPT wurde nicht geöffnet.\nSchließt nach 15 Sekunden."
+        Log.i("EPVoiceDiagnostic", "Session shown: $details")
         if (source == "wakeword") {
             window.window?.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
@@ -66,7 +77,7 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
             }
         }
         handler.removeCallbacks(autoClose)
-        handler.postDelayed(autoClose, 8_000L)
+        handler.postDelayed(autoClose, 15_000L)
     }
 
     override fun onHide() {
