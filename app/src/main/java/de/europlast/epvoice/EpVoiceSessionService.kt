@@ -3,6 +3,7 @@ package de.europlast.epvoice
 import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import android.content.Context
+import android.content.Intent
 import android.app.KeyguardManager
 import android.os.Bundle
 import android.os.Handler
@@ -26,6 +27,7 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
     private var screenWakeLock: PowerManager.WakeLock? = null
     private val keyguardManager = context.getSystemService(KeyguardManager::class.java)
     private var diagnosticText: TextView? = null
+    private var handoffAttempted = false
     private val autoClose = Runnable {
         Log.i("EPVoiceDiagnostic", "Diagnostic session timed out; closing")
         finish()
@@ -88,6 +90,25 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
         }
         handler.removeCallbacks(autoClose)
         handler.postDelayed(autoClose, 15_000L)
+        if (source == "wakeword" && !deviceLocked && !handoffAttempted) {
+            handoffAttempted = true
+            handler.postDelayed({
+                if (!keyguardManager.isDeviceLocked) {
+                    try {
+                        val intent = Intent(context, ChatGptHandoffActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        Log.i("EPVoiceDiagnostic", "Unlocked handoff activity requested")
+                        finish()
+                    } catch (e: RuntimeException) {
+                        Log.e("EPVoiceDiagnostic", "Handoff activity blocked", e)
+                        diagnosticText?.text = "Android blockiert die Übergabe: ${e.javaClass.simpleName}"
+                    }
+                } else {
+                    diagnosticText?.text = "Gerät benötigt Authentifizierung; keine Übergabe."
+                }
+            }, 900L)
+        }
     }
 
     override fun onHide() {
