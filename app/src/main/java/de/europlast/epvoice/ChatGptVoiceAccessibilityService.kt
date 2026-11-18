@@ -230,6 +230,9 @@ internal object VoiceControlLabels {
     private val start = setOf(
         "start voice mode", "start voice conversation", "start voice chat",
         "sprachmodus starten", "sprachgespräch starten", "sprachchat starten",
+        "voice mode", "voice conversation", "voice chat", "start voice",
+        "sprachmodus", "sprachunterhaltung starten", "sprachkonversation starten",
+        "sprachchat", "sprachgespräch",
     )
     private val end = setOf(
         "end voice mode", "end voice conversation", "end voice chat", "exit voice mode",
