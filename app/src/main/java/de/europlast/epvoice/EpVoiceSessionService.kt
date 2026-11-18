@@ -54,10 +54,20 @@ private class EpVoiceSession(context: Context) : VoiceInteractionSession(context
         val interactive = powerManager.isInteractive
         val keyguardShowing = keyguardManager.isKeyguardLocked
         val deviceLocked = keyguardManager.isDeviceLocked
-        val details = "Quelle: $source\nDisplay aktiv: $interactive\nSperrbildschirm sichtbar: $keyguardShowing\nGerät gesperrt: $deviceLocked"
+        val details = listOf(
+            "Quelle: $source",
+            "Display aktiv: $interactive",
+            "Sperrbildschirm sichtbar: $keyguardShowing",
+            "Gerät gesperrt: $deviceLocked"
+        ).joinToString(separator = "\\n")
         context.getSharedPreferences("ep_debug", Context.MODE_PRIVATE).edit()
             .putString("keyguard_diagnostic", details).apply()
-        diagnosticText?.text = "EP Voice – Sperrbildschirm-Diagnose\n$details\nChatGPT wurde nicht geöffnet.\nSchließt nach 15 Sekunden."
+        diagnosticText?.text = listOf(
+            "EP Voice – Sperrbildschirm-Diagnose",
+            details,
+            "ChatGPT wurde nicht geöffnet.",
+            "Schließt nach 15 Sekunden."
+        ).joinToString(separator = "\\n")
         Log.i("EPVoiceDiagnostic", "Session shown: $details")
         if (source == "wakeword") {
             window.window?.addFlags(
