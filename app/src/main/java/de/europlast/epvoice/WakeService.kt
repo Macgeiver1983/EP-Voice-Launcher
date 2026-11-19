@@ -24,6 +24,7 @@ class WakeService : Service() {
     private val returnHandler = Handler(Looper.getMainLooper())
     private var pendingVoiceLaunch: Runnable? = null
     private var launchGeneration = 0L
+    private fun logEvent(event: String, detail: String = "") = VoiceEventLog.record(this, event, detail)
     private fun cancelPendingVoiceLaunch() {
         launchGeneration++
         pendingVoiceLaunch?.let(returnHandler::removeCallbacks)
@@ -48,6 +49,7 @@ class WakeService : Service() {
                     returning = false
                     debug("return_monitor", "Audio frei; starte Wakewords erneut")
                     debug("return_result", "Audio nach bestätigter Belegung 3 Sekunden frei; keine Android-Navigation ausgeführt")
+                    logEvent("RETURN_AUDIO_FREE", "Audio released; navigation not performed")
                     status("Mikrofon frei – Wakewords werden neu gestartet")
                     onStartCommand(null, 0, 0)
                     return
@@ -56,6 +58,7 @@ class WakeService : Service() {
                 returning = false
                 debug("return_monitor", "Audiozustand nicht sichtbar; manuell starten")
                 debug("return_result", "Unbestätigt: 90 Sekunden keine fremde Aufnahme erkannt; kein automatischer Bildschirmwechsel")
+                logEvent("RETURN_UNCONFIRMED", "No recording observed for 90 seconds")
                 status("Automatische Rückgabe nicht erkennbar – STARTEN drücken")
                 return
             }
@@ -70,6 +73,7 @@ class WakeService : Service() {
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
+            logEvent("SERVICE_STOP", "User requested stop")
             ChatGptVoiceAccessibilityService.cancelPendingStart()
             cancelPendingVoiceLaunch()
             returning = false
@@ -78,6 +82,7 @@ class WakeService : Service() {
             return START_NOT_STICKY
         }
         if (detector != null || returning) return START_NOT_STICKY
+        logEvent("DETECTOR_START", "New detector session")
         failed = false
         handedOff = false
         debug("engine", "Initialisierung läuft")
@@ -132,7 +137,10 @@ class WakeService : Service() {
             acceptedInGeneration = false
             detector?.startNamed { wakeWord, score ->
                 returnHandler.post {
-                    if (generation != detectorGeneration || returning || detector == null || acceptedInGeneration) return@post
+                    if (generation != detectorGeneration || returning || detector == null || acceptedInGeneration) {
+                        logEvent("WAKE_IGNORED", "word=$wakeWord score=$score stale_or_busy=true")
+                        return@post
+                    }
                     val now = SystemClock.elapsedRealtime()
                     val threshold = when (wakeWord) {
                         "Hey EP" -> 0.95f
@@ -141,6 +149,7 @@ class WakeService : Service() {
                     }
                     if (!score.isFinite() || score < threshold || now - detectorStartedAt < wakewordWarmupMs) {
                         debug("rejected_wakeword", "$wakeWord score=$score threshold=$threshold warmup=${now - detectorStartedAt}ms")
+                        logEvent("WAKE_REJECTED", "word=$wakeWord score=$score threshold=$threshold warmupMs=${now - detectorStartedAt}")
                         return@post
                     }
                 val prefs = getSharedPreferences("ep_debug", MODE_PRIVATE)
@@ -155,19 +164,26 @@ class WakeService : Service() {
                 if (now-lastTrigger > 5000) {
                     acceptedInGeneration = true
                     debug("accepted_wakeword", "$wakeWord score=$score elapsed=$now")
+                    logEvent("WAKE_ACCEPTED", "word=$wakeWord score=$score generation=$generation")
                     lastTrigger = now
                     if (requestOwnAssistantSession(wakeWord)) {
+                        logEvent("LAUNCH_REQUEST", "route=assistant word=$wakeWord")
                         status("$wakeWord erkannt – Android-Assistentensitzung angefordert")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else if (ChatGptVoiceAccessibilityService.requestVoiceStart { releaseMicrophone() }) {
+                        logEvent("LAUNCH_REQUEST", "route=accessibility word=$wakeWord")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else if (launchDirectVoice()) {
+                        logEvent("LAUNCH_REQUEST", "route=deep_link_or_fallback word=$wakeWord")
                         status("$wakeWord erkannt – direkter Sprachstart angefordert (noch nicht bestätigt)")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else {
+                        logEvent("LAUNCH_FALLBACK", "route=notification word=$wakeWord")
                         status("$wakeWord erkannt – Benachrichtigung öffnen")
                         showLaunchNotification(wakeWord)
                     }
+                } else {
+                    logEvent("WAKE_SUPPRESSED", "word=$wakeWord score=$score cooldown=true")
                 }
                 }
             }
@@ -255,6 +271,7 @@ class WakeService : Service() {
 
     private fun releaseMicrophone() {
         handedOff = true
+        logEvent("MICROPHONE_RELEASE", "Handoff to ChatGPT requested")
         releaseDetector()
         debug("engine", "Mikrofon freigegeben")
         status("ChatGPT wird gestartet – EP wartet auf Gesprächsende")
