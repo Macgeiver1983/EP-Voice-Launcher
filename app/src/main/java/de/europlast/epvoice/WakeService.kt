@@ -11,6 +11,10 @@ class WakeService : Service() {
     private var detector: OpenWakeWord? = null
     private val channel = "ep_voice"
     private var lastTrigger = 0L
+    private var detectorGeneration = 0L
+    private var detectorStartedAt = 0L
+    private var acceptedInGeneration = false
+    private val wakewordWarmupMs = 2500L
     private var failed = false
     private var handedOff = false
     private var returning = false
@@ -77,11 +81,9 @@ class WakeService : Service() {
         failed = false
         handedOff = false
         debug("engine", "Initialisierung läuft")
-        debug("events", "0")
-        debug("events_jarvis", "0")
-        debug("events_ep", "0")
+        // Keep counters across detector restarts so spontaneous launches remain diagnosable.
         debug("error", "Keine")
-        debug("phrase", "(noch nichts erkannt)")
+        // Preserve the last detection, including after a microphone handoff.
         debug("score_jarvis", "–")
         debug("score_ep", "–")
         debug("peak_ep", "–")
@@ -125,7 +127,22 @@ class WakeService : Service() {
                 debug("engine", "Audio aktiv: $frames Blöcke; Pegel %.3f".format(peak))
             }
             debug("engine", "Modellobjekt erstellt; Audio-Start läuft")
+            val generation = ++detectorGeneration
+            detectorStartedAt = SystemClock.elapsedRealtime()
+            acceptedInGeneration = false
             detector?.startNamed { wakeWord, score ->
+                returnHandler.post {
+                    if (generation != detectorGeneration || returning || detector == null || acceptedInGeneration) return@post
+                    val now = SystemClock.elapsedRealtime()
+                    val threshold = when (wakeWord) {
+                        "Hey EP" -> 0.95f
+                        "Hey Jarvis" -> 0.5f
+                        else -> Float.POSITIVE_INFINITY
+                    }
+                    if (!score.isFinite() || score < threshold || now - detectorStartedAt < wakewordWarmupMs) {
+                        debug("rejected_wakeword", "$wakeWord score=$score threshold=$threshold warmup=${now - detectorStartedAt}ms")
+                        return@post
+                    }
                 val prefs = getSharedPreferences("ep_debug", MODE_PRIVATE)
                 val count = (prefs.getString("events", "0")?.toIntOrNull() ?: 0) + 1
                 val modelCounter = if (wakeWord == "Hey EP") "events_ep" else "events_jarvis"
@@ -135,8 +152,9 @@ class WakeService : Service() {
                     .putString("last_score", score.toString())
                     .putString("last_model", wakeWord).apply()
                 debug("phrase", "$wakeWord (Score: $score)")
-                val now = SystemClock.elapsedRealtime()
                 if (now-lastTrigger > 5000) {
+                    acceptedInGeneration = true
+                    debug("accepted_wakeword", "$wakeWord score=$score elapsed=$now")
                     lastTrigger = now
                     if (requestOwnAssistantSession(wakeWord)) {
                         status("$wakeWord erkannt – Android-Assistentensitzung angefordert")
@@ -150,6 +168,7 @@ class WakeService : Service() {
                         status("$wakeWord erkannt – Benachrichtigung öffnen")
                         showLaunchNotification(wakeWord)
                     }
+                }
                 }
             }
             debug("engine", "start() zurückgekehrt; Audiofluss nicht unabhängig bestätigt")
@@ -251,6 +270,7 @@ class WakeService : Service() {
     }
 
     private fun releaseDetector() {
+        detectorGeneration++
         detector?.release()
         detector = null
     }
