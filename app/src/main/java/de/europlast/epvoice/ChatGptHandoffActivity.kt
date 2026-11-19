@@ -112,33 +112,27 @@ class ChatGptHandoffActivity : Activity() {
     }
 
     private fun launchChatGpt(launch: Intent) {
+        // Public deep link test. An accepted intent is NOT proof of an active voice session.
+        val deepLink = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://chat.com/?mode=voice"))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .setPackage(ChatGptVoiceAccessibilityService.CHATGPT_PACKAGE)
         try {
-            val voice = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
-            val info = try {
-                @Suppress("DEPRECATION")
-                packageManager.getActivityInfo(voice, 0)
-            } catch (e: Exception) {
-                recordHandoff("Voice-Activity nicht gefunden: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
-                null
-            }
-            if (info == null || !info.exported ||
-                (info.permission != null && checkSelfPermission(info.permission) != android.content.pm.PackageManager.PERMISSION_GRANTED)) {
-                if (info != null) recordHandoff("Voice-Activity nicht für EP Voice freigegeben; Hauptansicht als Fallback")
-                startActivity(launch)
+            if (deepLink.resolveActivity(packageManager) != null) {
+                startActivity(deepLink)
+                recordHandoff("Voice-Deep-Link an ChatGPT übergeben; Sprachmodus noch nicht bestätigt")
             } else {
-                try {
-                    startActivity(Intent(Intent.ACTION_MAIN).setComponent(voice).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    recordHandoff("Direkte Voice-Activity angefordert; aktive Sprachsitzung nicht bestätigt")
-                } catch (e: Exception) {
-                    recordHandoff("Direkter Voice-Aufruf gescheitert: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
-                    startActivity(launch)
-                }
+                recordHandoff("ChatGPT akzeptiert keinen passenden Voice-Deep-Link; Hauptansicht als Fallback")
+                startActivity(launch)
             }
             finish()
-        } catch (_: ActivityNotFoundException) {
-            showFailure("Das angeforderte ChatGPT-Ziel ist nicht verfügbar.")
-        } catch (_: SecurityException) {
-            showFailure("Android hat das Öffnen des ChatGPT-Ziels blockiert.")
+        } catch (e: Exception) {
+            recordHandoff("Voice-Deep-Link fehlgeschlagen: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
+            try {
+                startActivity(launch)
+                finish()
+            } catch (fallback: Exception) {
+                showFailure("ChatGPT konnte nicht geöffnet werden: ${fallback.javaClass.simpleName}")
+            }
         }
     }
 
