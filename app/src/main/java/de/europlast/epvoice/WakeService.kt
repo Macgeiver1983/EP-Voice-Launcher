@@ -22,26 +22,33 @@ class WakeService : Service() {
         override fun run() {
             if (!waitingForReturn) return
             val audio = getSystemService(AudioManager::class.java)
-            val recording = try {
-                audio.activeRecordingConfigurations.any { it.clientPackageName == "com.openai.chatgpt" }
-            } catch (_: Exception) { false }
-            if (recording) {
+            // Android masks the package name of other apps' recordings. Check whether
+            // another recording is active instead of matching a hidden package name.
+            val recordings = try { audio.activeRecordingConfigurations } catch (_: Exception) { emptyList() }
+            val mode = audio.mode
+            val busy = recordings.isNotEmpty() || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_IN_CALL
+            val elapsed = SystemClock.elapsedRealtime() - returnStart
+            if (busy) {
                 chatGptAudioSeen = true
                 silentSince = 0L
-                debug("return_monitor", "ChatGPT-Mikrofonaufnahme erkannt")
+                debug("return_monitor", "Audio belegt: Aufnahmen=${recordings.size}, Modus=$mode; EP wartet")
             } else if (chatGptAudioSeen) {
                 if (silentSince == 0L) silentSince = SystemClock.elapsedRealtime()
                 if (SystemClock.elapsedRealtime() - silentSince >= 2500L) {
                     waitingForReturn = false
-                    debug("return_monitor", "ChatGPT-Mikrofon frei; Wakeword-Erkennung startet")
+                    debug("return_monitor", "Audio seit 2,5 Sekunden frei; EP startet Wakewords")
+                    status("ChatGPT beendet – Wakeword-Erkennung wird gestartet")
                     onStartCommand(null, 0, 0)
                     return
                 }
-            } else if (SystemClock.elapsedRealtime() - returnStart >= 30000L) {
+            } else if (elapsed >= 30000L) {
+                // Never take the microphone back without observing a prior busy state.
                 waitingForReturn = false
-                debug("return_monitor", "Keine ChatGPT-Aufnahme sichtbar; manuelles STARTEN erforderlich")
+                debug("return_monitor", "Keine fremde Aufnahme sichtbar; Rückgabe nicht sicher erkennbar")
                 status("Rückgabe nicht erkennbar – STARTEN drücken")
                 return
+            } else {
+                debug("return_monitor", "Warte auf ChatGPT-Audio; ${elapsed / 1000}s")
             }
             returnHandler.postDelayed(this, 500L)
         }
@@ -74,6 +81,7 @@ class WakeService : Service() {
         debug("peak_ep", "–")
         debug("frames_ep", "–")
         debug("handoff", "Bereit")
+        debug("return_monitor", "Bereit")
         debug("model_error", "")
         val stop = PendingIntent.getService(this,1,Intent(this,WakeService::class.java).setAction("STOP"),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_btn_speak_now)
@@ -219,7 +227,7 @@ class WakeService : Service() {
         handedOff = true
         releaseDetector()
         debug("engine", "Mikrofon freigegeben")
-        status("Erkennung pausiert – zum Fortsetzen STARTEN")
+        status("ChatGPT läuft – EP wartet auf Mikrofonrückgabe")
         waitingForReturn = true
         chatGptAudioSeen = false
         silentSince = 0L
