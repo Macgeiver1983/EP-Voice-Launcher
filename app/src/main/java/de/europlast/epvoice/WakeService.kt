@@ -115,42 +115,33 @@ class WakeService : Service() {
         }
         return START_NOT_STICKY
     }
-    /** Undocumented ChatGPT component: only use when Android exposes it to other apps. */
+    /** Public voice deep link test, without Accessibility. Never report launch as voice success. */
     private fun launchDirectVoice(): Boolean {
-        val component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
-        val available = try {
-            @Suppress("DEPRECATION")
-            val info = packageManager.getActivityInfo(component, 0)
-            info.exported && (info.permission == null || checkSelfPermission(info.permission) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://chat.com/?mode=voice"))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .setPackage("com.openai.chatgpt")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val supported = try {
+            intent.resolveActivity(packageManager) != null
         } catch (e: Exception) {
-            debug("handoff", "Voice-Activity nicht zugänglich: ${e.javaClass.simpleName}")
+            debug("handoff", "Deep-Link-Prüfung fehlgeschlagen: ${e.javaClass.simpleName}")
             false
         }
-        if (!available) {
-            // Preserve the existing normal-ChatGPT fallback, but release the microphone first.
-            releaseMicrophone()
-            val opened = MainActivity.tryOpenChatGpt()
-            debug("handoff", if (opened) "Voice-Activity nicht verfügbar; ChatGPT-Hauptansicht angefordert" else "ChatGPT-Start fehlgeschlagen")
-            return opened
-        }
         releaseMicrophone()
-        return try {
-            val intent = Intent(Intent.ACTION_MAIN).setComponent(component)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            Handler(Looper.getMainLooper()).postDelayed({
-                try {
-                    startActivity(intent)
-                    debug("handoff", "Voice-Activity angefordert; Sprachsitzung nicht bestätigt")
-                } catch (e: Exception) {
-                    debug("handoff", "Voice-Activity fehlgeschlagen: ${e.javaClass.simpleName}: ${e.message}")
-                    MainActivity.tryOpenChatGpt()
-                }
-            }, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
-            true
-        } catch (e: Exception) {
-            debug("handoff", "Direkter Start fehlgeschlagen: ${e.javaClass.simpleName}")
-            MainActivity.tryOpenChatGpt()
+        if (!supported) {
+            debug("handoff", "ChatGPT unterstützt den Voice-Deep-Link nicht; Hauptansicht als Fallback")
+            return MainActivity.tryOpenChatGpt()
         }
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                startActivity(intent)
+                debug("handoff", "Voice-Deep-Link angefordert; Sprachmodus nicht bestätigt")
+            } catch (e: Exception) {
+                debug("handoff", "Voice-Deep-Link blockiert: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
+                MainActivity.tryOpenChatGpt()
+            }
+        }, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
+        return true
     }
 
     private fun requestOwnAssistantSession(wakeWord: String): Boolean {
