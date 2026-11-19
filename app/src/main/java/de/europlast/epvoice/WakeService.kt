@@ -1,6 +1,7 @@
 package de.europlast.epvoice
 
 import android.app.*
+import android.media.AudioManager
 import android.content.*
 import android.os.*
 import com.openwakeword.OpenWakeWord
@@ -12,6 +13,39 @@ class WakeService : Service() {
     private var lastTrigger = 0L
     private var failed = false
     private var handedOff = false
+    private var waitingForReturn = false
+    private var chatGptAudioSeen = false
+    private var silentSince = 0L
+    private var returnStart = 0L
+    private val returnHandler = Handler(Looper.getMainLooper())
+    private val returnCheck = object : Runnable {
+        override fun run() {
+            if (!waitingForReturn) return
+            val audio = getSystemService(AudioManager::class.java)
+            val recording = try {
+                audio.activeRecordingConfigurations.any { it.clientPackageName == "com.openai.chatgpt" }
+            } catch (_: Exception) { false }
+            if (recording) {
+                chatGptAudioSeen = true
+                silentSince = 0L
+                debug("return_monitor", "ChatGPT-Mikrofonaufnahme erkannt")
+            } else if (chatGptAudioSeen) {
+                if (silentSince == 0L) silentSince = SystemClock.elapsedRealtime()
+                if (SystemClock.elapsedRealtime() - silentSince >= 2500L) {
+                    waitingForReturn = false
+                    debug("return_monitor", "ChatGPT-Mikrofon frei; Wakeword-Erkennung startet")
+                    onStartCommand(null, 0, 0)
+                    return
+                }
+            } else if (SystemClock.elapsedRealtime() - returnStart >= 30000L) {
+                waitingForReturn = false
+                debug("return_monitor", "Keine ChatGPT-Aufnahme sichtbar; manuelles STARTEN erforderlich")
+                status("Rückgabe nicht erkennbar – STARTEN drücken")
+                return
+            }
+            returnHandler.postDelayed(this, 500L)
+        }
+    }
     private fun debug(key: String, value: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString(key, value).apply() }
     private fun status(s: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("state",s).apply() }
     override fun onCreate() {
@@ -21,10 +55,12 @@ class WakeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
             ChatGptVoiceAccessibilityService.cancelPendingStart()
+            waitingForReturn = false
+            returnHandler.removeCallbacks(returnCheck)
             stopSelf()
             return START_NOT_STICKY
         }
-        if (detector != null) return START_NOT_STICKY
+        if (detector != null || waitingForReturn) return START_NOT_STICKY
         failed = false
         handedOff = false
         debug("engine", "Initialisierung läuft")
@@ -184,8 +220,14 @@ class WakeService : Service() {
         releaseDetector()
         debug("engine", "Mikrofon freigegeben")
         status("Erkennung pausiert – zum Fortsetzen STARTEN")
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        waitingForReturn = true
+        chatGptAudioSeen = false
+        silentSince = 0L
+        returnStart = SystemClock.elapsedRealtime()
+        debug("return_monitor", "Warte auf Ende der ChatGPT-Mikrofonaufnahme")
+        returnHandler.removeCallbacks(returnCheck)
+        returnHandler.postDelayed(returnCheck, 1500L)
+        // Keep the foreground service alive so the microphone can be reacquired.
     }
 
     private fun releaseDetector() {
@@ -194,6 +236,8 @@ class WakeService : Service() {
     }
 
     override fun onDestroy() {
+        waitingForReturn = false
+        returnHandler.removeCallbacks(returnCheck)
         releaseDetector()
         if (!failed && !handedOff) {
             debug("engine", "Mikrofon inaktiv")
