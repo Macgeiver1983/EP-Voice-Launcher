@@ -18,6 +18,13 @@ class WakeService : Service() {
     private var freeSince = 0L
     private var handoffAt = 0L
     private val returnHandler = Handler(Looper.getMainLooper())
+    private var pendingVoiceLaunch: Runnable? = null
+    private var launchGeneration = 0L
+    private fun cancelPendingVoiceLaunch() {
+        launchGeneration++
+        pendingVoiceLaunch?.let(returnHandler::removeCallbacks)
+        pendingVoiceLaunch = null
+    }
     private val returnPoll = object : Runnable {
         override fun run() {
             if (!returning) return
@@ -56,6 +63,7 @@ class WakeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
             ChatGptVoiceAccessibilityService.cancelPendingStart()
+            cancelPendingVoiceLaunch()
             returning = false
             returnHandler.removeCallbacks(returnPoll)
             stopSelf()
@@ -169,7 +177,11 @@ class WakeService : Service() {
             debug("handoff", "ChatGPT unterstützt den Voice-Deep-Link nicht; Hauptansicht als Fallback")
             return MainActivity.tryOpenChatGpt()
         }
-        Handler(Looper.getMainLooper()).postDelayed({
+        cancelPendingVoiceLaunch()
+        val generation = launchGeneration
+        val launch = Runnable {
+            pendingVoiceLaunch = null
+            if (generation != launchGeneration || !handedOff || !returning) return@Runnable
             try {
                 startActivity(intent)
                 debug("handoff", "Voice-Deep-Link angefordert; Sprachmodus nicht bestätigt")
@@ -177,7 +189,9 @@ class WakeService : Service() {
                 debug("handoff", "Voice-Deep-Link blockiert: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
                 MainActivity.tryOpenChatGpt()
             }
-        }, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
+        }
+        pendingVoiceLaunch = launch
+        returnHandler.postDelayed(launch, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
         return true
     }
 
@@ -237,6 +251,7 @@ class WakeService : Service() {
 
     override fun onDestroy() {
         returning = false
+        cancelPendingVoiceLaunch()
         returnHandler.removeCallbacks(returnPoll)
         releaseDetector()
         if (!failed && !handedOff) {
