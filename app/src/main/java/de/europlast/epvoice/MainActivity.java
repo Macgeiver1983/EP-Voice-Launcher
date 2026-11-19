@@ -33,7 +33,8 @@ public class MainActivity extends Activity {
                     + " | Bestätigung " + prefs.getString("frames_ep", "–") + " von 4");
             accessibilityState.setText(ChatGptVoiceAccessibilityService.isConnected()
                     ? "Bedienungshilfe verbunden" : "Bedienungshilfe nicht aktiv");
-            voiceState.setText("ChatGPT: " + prefs.getString("handoff", "Noch nicht getestet"));
+            voiceState.setText("ChatGPT: " + prefs.getString("handoff", "Noch nicht getestet")
+                    + "\\nMikrofonrückgabe: " + prefs.getString("return_monitor", "Noch nicht geprüft"));
             String modelError = prefs.getString("model_error", "");
             errorState.setText("Fehler: " + prefs.getString("error", "Keine")
                     + (modelError.isEmpty() ? "" : "\n" + modelError));
@@ -48,7 +49,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 72, 48, 48); root.setBackgroundColor(Color.rgb(245,247,250));
         TextView heading = new TextView(this); heading.setText("EP Voice Launcher V0.4.7 Voice-Test"); heading.setTextSize(25); heading.setTextColor(Color.BLACK); root.addView(heading);
-        TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nEinrichtung: Bedienungshilfe öffnen → Installierte Apps → EP Voice – ChatGPT-Sprachstart → einschalten. Die Hilfe prüft bei einem Startauftrag kurz die sichtbaren Bedienelemente in ChatGPT.\n\nBei entsperrtem, eingeschaltetem Bildschirm versucht EP Voice nach dem Aktivierungswort einmal den Sprachknopf zu betätigen. Beim Wechsel zu ChatGPT pausiert die Erkennung. Danach kannst du sie mit STARTEN fortsetzen."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
+        TextView info = new TextView(this); info.setText("Hey Jarvis und Hey EP werden lokal erkannt.\n\nNach dem Aktivierungswort wird der ChatGPT-Sprachmodus per Deep Link gestartet. Die Wakeword-Erkennung pausiert während des Gesprächs und versucht nach Freigabe des Mikrofons automatisch wieder zu starten.\n\nFalls Android die Mikrofonrückgabe nicht erkennen lässt, zeigt die Diagnose den Grund an."); info.setTextSize(17); info.setPadding(0,35,0,35); root.addView(info);
         status = new TextView(this); status.setTextSize(16); root.addView(status);
         recognized = new TextView(this); recognized.setTextSize(19); recognized.setPadding(0,30,0,15);root.addView(recognized);
         recognitionState = new TextView(this); recognitionState.setTextSize(16);root.addView(recognitionState);
