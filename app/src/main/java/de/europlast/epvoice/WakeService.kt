@@ -94,8 +94,8 @@ class WakeService : Service() {
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else if (ChatGptVoiceAccessibilityService.requestVoiceStart { releaseMicrophone() }) {
                         getSystemService(NotificationManager::class.java).cancel(1002)
-                    } else if (MainActivity.tryOpenChatGpt()) {
-                        status("$wakeWord erkannt – ChatGPT wird geöffnet")
+                    } else if (launchDirectVoice()) {
+                        status("$wakeWord erkannt – direkter Sprachstart angefordert (noch nicht bestätigt)")
                         getSystemService(NotificationManager::class.java).cancel(1002)
                     } else {
                         status("$wakeWord erkannt – Benachrichtigung öffnen")
@@ -115,6 +115,44 @@ class WakeService : Service() {
         }
         return START_NOT_STICKY
     }
+    /** Undocumented ChatGPT component: only use when Android exposes it to other apps. */
+    private fun launchDirectVoice(): Boolean {
+        val component = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
+        val available = try {
+            @Suppress("DEPRECATION")
+            val info = packageManager.getActivityInfo(component, 0)
+            info.exported && (info.permission == null || checkSelfPermission(info.permission) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        } catch (e: Exception) {
+            debug("handoff", "Voice-Activity nicht zugänglich: ${e.javaClass.simpleName}")
+            false
+        }
+        if (!available) {
+            // Preserve the existing normal-ChatGPT fallback, but release the microphone first.
+            releaseMicrophone()
+            val opened = MainActivity.tryOpenChatGpt()
+            debug("handoff", if (opened) "Voice-Activity nicht verfügbar; ChatGPT-Hauptansicht angefordert" else "ChatGPT-Start fehlgeschlagen")
+            return opened
+        }
+        releaseMicrophone()
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).setComponent(component)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    startActivity(intent)
+                    debug("handoff", "Voice-Activity angefordert; Sprachsitzung nicht bestätigt")
+                } catch (e: Exception) {
+                    debug("handoff", "Voice-Activity fehlgeschlagen: ${e.javaClass.simpleName}: ${e.message}")
+                    MainActivity.tryOpenChatGpt()
+                }
+            }, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
+            true
+        } catch (e: Exception) {
+            debug("handoff", "Direkter Start fehlgeschlagen: ${e.javaClass.simpleName}")
+            MainActivity.tryOpenChatGpt()
+        }
+    }
+
     private fun requestOwnAssistantSession(wakeWord: String): Boolean {
         val component = ComponentName(this, EpVoiceInteractionService::class.java)
         if (!android.service.voice.VoiceInteractionService.isActiveService(this, component)) {
