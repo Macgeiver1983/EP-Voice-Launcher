@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ep_accessibility_description">EP Voice verwendet diese optionale Bedienungshilfe ausschließlich, um nach einem bestätigten Aktivierungswort den Sprachmodus in ChatGPT zu starten. Die Bedienungshilfe reagiert nicht eigenständig auf Bildschirmereignisse.</string>
+</resources>
