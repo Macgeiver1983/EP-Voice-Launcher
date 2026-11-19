@@ -32,13 +32,10 @@ class ChatGptHandoffActivity : Activity() {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             if (launchIntent == null || !resumed || isFinishing) return
             val binder = service as WakeService.HandoffBinder
-            if (ChatGptVoiceAccessibilityService.requestVoiceStart { binder.releaseMicrophone() }) {
-                finish()
-            } else {
-                binder.releaseMicrophone()
-                launchPending = true
-                handler.postDelayed(launchAfterRelease, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
-            }
+            binder.releaseMicrophone()
+            recordHandoff("Mikrofon freigegeben; direkter Sprachstart folgt")
+            launchPending = true
+            handler.postDelayed(launchAfterRelease, ChatGptVoiceAccessibilityService.MICROPHONE_SETTLE_MS)
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -116,8 +113,27 @@ class ChatGptHandoffActivity : Activity() {
 
     private fun launchChatGpt(launch: Intent) {
         try {
-            startActivity(launch)
-            recordHandoff("ChatGPT-App geöffnet – Bedienungshilfe nicht verwendet")
+            val voice = ComponentName("com.openai.chatgpt", "com.openai.voice.assistant.AssistantActivity")
+            val info = try {
+                @Suppress("DEPRECATION")
+                packageManager.getActivityInfo(voice, 0)
+            } catch (e: Exception) {
+                recordHandoff("Voice-Activity nicht gefunden: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
+                null
+            }
+            if (info == null || !info.exported ||
+                (info.permission != null && checkSelfPermission(info.permission) != android.content.pm.PackageManager.PERMISSION_GRANTED)) {
+                if (info != null) recordHandoff("Voice-Activity nicht für EP Voice freigegeben; Hauptansicht als Fallback")
+                startActivity(launch)
+            } else {
+                try {
+                    startActivity(Intent(Intent.ACTION_MAIN).setComponent(voice).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    recordHandoff("Direkte Voice-Activity angefordert; aktive Sprachsitzung nicht bestätigt")
+                } catch (e: Exception) {
+                    recordHandoff("Direkter Voice-Aufruf gescheitert: ${e.javaClass.simpleName}; Hauptansicht als Fallback")
+                    startActivity(launch)
+                }
+            }
             finish()
         } catch (_: ActivityNotFoundException) {
             showFailure("Das angeforderte ChatGPT-Ziel ist nicht verfügbar.")
