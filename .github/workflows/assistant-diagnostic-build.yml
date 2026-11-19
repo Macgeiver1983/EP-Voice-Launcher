@@ -111,10 +111,13 @@ jobs:
           manifest = Path("app/src/main/AndroidManifest.xml")
           original = Path(os.environ["RUNNER_TEMP"] + "/original-manifest.xml").read_text()
           variants = {
-              "C-no-overlay-permission": original.replace(
-                  '    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />\n', ""),
               "D-no-voice-assistant-services": original,
           }
+          overlay_line = '    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />\n'
+          if overlay_line in original:
+              variants["C-no-overlay-permission"] = original.replace(overlay_line, "")
+          else:
+              print("Overlay permission already absent; skipping redundant C variant.")
           import re
           variants["D-no-voice-assistant-services"] = re.sub(
               r'        <service android:name="\.EpVoiceInteractionService".*?</service>\s*',
