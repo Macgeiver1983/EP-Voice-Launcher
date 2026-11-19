@@ -2,6 +2,7 @@ package de.europlast.epvoice
 
 import android.app.*
 import android.content.*
+import android.media.AudioManager
 import android.os.*
 import com.openwakeword.OpenWakeWord
 
@@ -12,6 +13,40 @@ class WakeService : Service() {
     private var lastTrigger = 0L
     private var failed = false
     private var handedOff = false
+    private var returning = false
+    private var observedBusy = false
+    private var freeSince = 0L
+    private var handoffAt = 0L
+    private val returnHandler = Handler(Looper.getMainLooper())
+    private val returnPoll = object : Runnable {
+        override fun run() {
+            if (!returning) return
+            val audio = getSystemService(AudioManager::class.java)
+            val recordings = try { audio.activeRecordingConfigurations.size } catch (_: Exception) { 0 }
+            val busy = recordings > 0 || audio.mode == AudioManager.MODE_IN_COMMUNICATION || audio.mode == AudioManager.MODE_IN_CALL
+            val now = SystemClock.elapsedRealtime()
+            if (busy) {
+                observedBusy = true
+                freeSince = 0L
+                debug("return_monitor", "Audio belegt; warte auf Gesprächsende")
+            } else if (observedBusy) {
+                if (freeSince == 0L) freeSince = now
+                if (now - freeSince >= 3000L) {
+                    returning = false
+                    debug("return_monitor", "Audio frei; starte Wakewords erneut")
+                    status("Mikrofon frei – Wakewords werden neu gestartet")
+                    onStartCommand(null, 0, 0)
+                    return
+                }
+            } else if (now - handoffAt > 90000L) {
+                returning = false
+                debug("return_monitor", "Audiozustand nicht sichtbar; manuell starten")
+                status("Automatische Rückgabe nicht erkennbar – STARTEN drücken")
+                return
+            }
+            returnHandler.postDelayed(this, 750L)
+        }
+    }
     private fun debug(key: String, value: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString(key, value).apply() }
     private fun status(s: String) { getSharedPreferences("ep_debug", MODE_PRIVATE).edit().putString("state",s).apply() }
     override fun onCreate() {
@@ -21,10 +56,12 @@ class WakeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
             ChatGptVoiceAccessibilityService.cancelPendingStart()
+            returning = false
+            returnHandler.removeCallbacks(returnPoll)
             stopSelf()
             return START_NOT_STICKY
         }
-        if (detector != null) return START_NOT_STICKY
+        if (detector != null || returning) return START_NOT_STICKY
         failed = false
         handedOff = false
         debug("engine", "Initialisierung läuft")
@@ -54,7 +91,7 @@ class WakeService : Service() {
                 debug("engine", "FEHLER im Audio-/Modell-Thread")
                 debug("error", "${error.javaClass.simpleName}: ${error.message}; ${error.cause?.message ?: ""}")
                 status("Erkennung fehlgeschlagen – siehe Fehleranzeige")
-                stopSelf()
+                if (!handedOff) stopSelf()
             }
             detector?.onOptionalModelError = { label, detail ->
                 debug("model_error", "$label nicht verfügbar: $detail")
@@ -183,9 +220,14 @@ class WakeService : Service() {
         handedOff = true
         releaseDetector()
         debug("engine", "Mikrofon freigegeben")
-        status("Erkennung pausiert – zum Fortsetzen STARTEN")
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        status("ChatGPT wird gestartet – EP wartet auf Gesprächsende")
+        returning = true
+        observedBusy = false
+        freeSince = 0L
+        handoffAt = SystemClock.elapsedRealtime()
+        debug("return_monitor", "Warte auf fremde Mikrofonaufnahme")
+        returnHandler.removeCallbacks(returnPoll)
+        returnHandler.postDelayed(returnPoll, 4000L)
     }
 
     private fun releaseDetector() {
@@ -194,6 +236,8 @@ class WakeService : Service() {
     }
 
     override fun onDestroy() {
+        returning = false
+        returnHandler.removeCallbacks(returnPoll)
         releaseDetector()
         if (!failed && !handedOff) {
             debug("engine", "Mikrofon inaktiv")
