@@ -30,7 +30,9 @@ class WakeService : Service() {
             if (!returning) return
             val audio = getSystemService(AudioManager::class.java)
             val recordings = try { audio.activeRecordingConfigurations.size } catch (_: Exception) { 0 }
-            val busy = recordings > 0 || audio.mode == AudioManager.MODE_IN_COMMUNICATION || audio.mode == AudioManager.MODE_IN_CALL
+            val mode = audio.mode
+            val busy = recordings > 0 || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_IN_CALL
+            debug("return_audio", "recordings=$recordings, mode=$mode, busy=$busy, observedBusy=$observedBusy")
             val now = SystemClock.elapsedRealtime()
             if (busy) {
                 observedBusy = true
@@ -41,6 +43,7 @@ class WakeService : Service() {
                 if (now - freeSince >= 3000L) {
                     returning = false
                     debug("return_monitor", "Audio frei; starte Wakewords erneut")
+                    debug("return_result", "Audio nach bestätigter Belegung 3 Sekunden frei; keine Android-Navigation ausgeführt")
                     status("Mikrofon frei – Wakewords werden neu gestartet")
                     onStartCommand(null, 0, 0)
                     return
@@ -48,6 +51,7 @@ class WakeService : Service() {
             } else if (now - handoffAt > 90000L) {
                 returning = false
                 debug("return_monitor", "Audiozustand nicht sichtbar; manuell starten")
+                debug("return_result", "Unbestätigt: 90 Sekunden keine fremde Aufnahme erkannt; kein automatischer Bildschirmwechsel")
                 status("Automatische Rückgabe nicht erkennbar – STARTEN drücken")
                 return
             }
@@ -240,6 +244,8 @@ class WakeService : Service() {
         freeSince = 0L
         handoffAt = SystemClock.elapsedRealtime()
         debug("return_monitor", "Warte auf fremde Mikrofonaufnahme")
+        debug("return_result", "Prüfung läuft: nur Mikrofonzustand, keine ChatGPT-Navigation")
+        debug("return_audio", "noch keine Messung")
         returnHandler.removeCallbacks(returnPoll)
         returnHandler.postDelayed(returnPoll, 4000L)
     }
